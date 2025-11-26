@@ -1,0 +1,292 @@
+"""Data coordinator for Energy Scheduler Pstryk."""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta
+from typing import Any
+
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
+
+from .const import (
+    CONF_DEFAULT_MODE,
+    CONF_INVERTER_MODE_ENTITY,
+    CONF_PRICE_BUY_SENSOR,
+    CONF_PRICE_SELL_SENSOR,
+    CONF_SOC_SENSOR,
+    DOMAIN,
+    SCHEDULER_INTERVAL,
+)
+from .storage_manager import ScheduleStorageManager
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class EnergySchedulerCoordinator(DataUpdateCoordinator):
+    """Coordinator for Energy Scheduler data."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config: dict[str, Any],
+        storage: ScheduleStorageManager,
+    ) -> None:
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=timedelta(minutes=1),
+        )
+        self._config = config
+        self._storage = storage
+        self._current_action: str | None = None
+        self._action_start_time: datetime | None = None
+        self._unsub_interval: Any = None
+
+    @property
+    def storage(self) -> ScheduleStorageManager:
+        """Return the storage manager."""
+        return self._storage
+
+    @property
+    def config(self) -> dict[str, Any]:
+        """Return the configuration."""
+        return self._config
+
+    @property
+    def price_buy_sensor(self) -> str:
+        """Return the buy price sensor entity ID."""
+        return self._config.get(CONF_PRICE_BUY_SENSOR, "sensor.energy_price_buy")
+
+    @property
+    def price_sell_sensor(self) -> str:
+        """Return the sell price sensor entity ID."""
+        return self._config.get(CONF_PRICE_SELL_SENSOR, "sensor.energy_price_sell")
+
+    @property
+    def inverter_mode_entity(self) -> str:
+        """Return the inverter mode entity ID."""
+        return self._config.get(CONF_INVERTER_MODE_ENTITY, "input_select.inverter_mode")
+
+    @property
+    def default_mode(self) -> str:
+        """Return the default mode."""
+        return self._config.get(CONF_DEFAULT_MODE, "")
+
+    @property
+    def soc_sensor(self) -> str | None:
+        """Return the SOC sensor entity ID."""
+        return self._config.get(CONF_SOC_SENSOR)
+
+    async def async_setup(self) -> None:
+        """Set up the coordinator."""
+        await self._storage.async_load()
+        await self._storage.async_cleanup_old_dates()
+
+        # Start the scheduler
+        self._unsub_interval = async_track_time_interval(
+            self.hass,
+            self._async_check_schedule,
+            timedelta(seconds=SCHEDULER_INTERVAL),
+        )
+
+    async def async_shutdown(self) -> None:
+        """Shut down the coordinator."""
+        if self._unsub_interval:
+            self._unsub_interval()
+
+    async def _async_fetch_data(self) -> dict[str, Any]:
+        """Fetch price data from sensors."""
+        buy_data = self._get_sensor_price_data(self.price_buy_sensor)
+        sell_data = self._get_sensor_price_data(self.price_sell_sensor)
+
+        inverter_modes = self._get_inverter_modes()
+
+        return {
+            "buy_prices": buy_data,
+            "sell_prices": sell_data,
+            "inverter_modes": inverter_modes,
+            "default_mode": self.default_mode,
+            "schedule": self._storage.get_schedule(),
+            "current_action": self._current_action,
+        }
+
+    def _get_sensor_price_data(self, entity_id: str) -> list[dict[str, Any]]:
+        """Get price data from a sensor's data attribute."""
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            _LOGGER.warning("Sensor %s not found", entity_id)
+            return []
+
+        data = state.attributes.get("data", [])
+        if not data:
+            _LOGGER.debug("No data attribute found for sensor %s", entity_id)
+            return []
+
+        # Convert UTC times to local timezone
+        local_tz = dt_util.get_default_time_zone()
+        converted_data = []
+
+        for entry in data:
+            try:
+                start_utc = datetime.fromisoformat(entry["start"].replace("Z", "+00:00"))
+                end_utc = datetime.fromisoformat(entry["end"].replace("Z", "+00:00"))
+
+                start_local = start_utc.astimezone(local_tz)
+                end_local = end_utc.astimezone(local_tz)
+
+                converted_data.append({
+                    "start": start_local.isoformat(),
+                    "end": end_local.isoformat(),
+                    "value": entry["value"],
+                    "hour": start_local.hour,
+                    "date": start_local.strftime("%Y-%m-%d"),
+                })
+            except (KeyError, ValueError) as err:
+                _LOGGER.warning("Error parsing price data entry: %s", err)
+                continue
+
+        return converted_data
+
+    def _get_inverter_modes(self) -> list[str]:
+        """Get available inverter modes from input_select."""
+        state = self.hass.states.get(self.inverter_mode_entity)
+        if state is None:
+            _LOGGER.warning("Inverter mode entity %s not found", self.inverter_mode_entity)
+            return []
+
+        options = state.attributes.get("options", [])
+        return options
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update data via coordinator."""
+        return await self._async_fetch_data()
+
+    @callback
+    async def _async_check_schedule(self, now: datetime) -> None:
+        """Check and apply scheduled actions."""
+        local_now = dt_util.as_local(now)
+        current_date = local_now.strftime("%Y-%m-%d")
+        current_hour = str(local_now.hour)
+        current_minute = local_now.minute
+
+        # Get the schedule for this hour
+        hour_schedule = self._storage.get_hour_schedule(current_date, current_hour)
+
+        if hour_schedule:
+            action = hour_schedule.get("action")
+            soc_limit = hour_schedule.get("soc_limit")
+            full_hour = hour_schedule.get("full_hour", False)
+            minutes = hour_schedule.get("minutes")
+
+            # Check if we need to apply this action
+            if action and action != self.default_mode:
+                should_apply = True
+                should_revert = False
+
+                # Check SOC limit if specified
+                if soc_limit is not None and self.soc_sensor:
+                    current_soc = self._get_current_soc()
+                    if current_soc is not None and current_soc >= soc_limit:
+                        should_apply = False
+                        should_revert = True
+                        _LOGGER.info(
+                            "SOC limit reached (%s >= %s), reverting to default mode",
+                            current_soc, soc_limit
+                        )
+
+                # Check minutes limit
+                if minutes is not None and not full_hour:
+                    if current_minute >= minutes:
+                        should_apply = False
+                        should_revert = True
+                        _LOGGER.info(
+                            "Minutes limit reached (%s >= %s), reverting to default mode",
+                            current_minute, minutes
+                        )
+
+                if should_apply and self._current_action != action:
+                    await self._async_apply_mode(action)
+                elif should_revert:
+                    await self._async_apply_default_mode()
+
+        else:
+            # No schedule for this hour - check if we need to revert
+            if self._current_action and self._current_action != self.default_mode:
+                # Check if previous hour had an action
+                prev_hour = str((local_now.hour - 1) % 24)
+                prev_date = current_date
+                if local_now.hour == 0:
+                    prev_date = (local_now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+                prev_schedule = self._storage.get_hour_schedule(prev_date, prev_hour)
+                if prev_schedule:
+                    # Previous hour had action, this hour doesn't - revert
+                    await self._async_apply_default_mode()
+
+    def _get_current_soc(self) -> int | None:
+        """Get current SOC value from sensor."""
+        if not self.soc_sensor:
+            return None
+
+        state = self.hass.states.get(self.soc_sensor)
+        if state is None:
+            return None
+
+        try:
+            return int(float(state.state))
+        except (ValueError, TypeError):
+            return None
+
+    async def _async_apply_mode(self, mode: str) -> None:
+        """Apply the specified inverter mode."""
+        try:
+            await self.hass.services.async_call(
+                "input_select",
+                "select_option",
+                {
+                    "entity_id": self.inverter_mode_entity,
+                    "option": mode,
+                },
+            )
+            self._current_action = mode
+            self._action_start_time = dt_util.utcnow()
+            _LOGGER.info("Applied inverter mode: %s", mode)
+        except Exception as err:
+            _LOGGER.error("Failed to apply mode %s: %s", mode, err)
+
+    async def _async_apply_default_mode(self) -> None:
+        """Apply the default mode."""
+        if self.default_mode:
+            await self._async_apply_mode(self.default_mode)
+            _LOGGER.info("Reverted to default mode: %s", self.default_mode)
+
+    async def async_set_schedule(
+        self,
+        date: str,
+        hour: str,
+        action: str,
+        soc_limit: int | None = None,
+        full_hour: bool = False,
+        minutes: int | None = None,
+    ) -> None:
+        """Set a schedule entry."""
+        await self._storage.async_set_hour_schedule(
+            date, hour, action, soc_limit, full_hour, minutes
+        )
+        await self.async_request_refresh()
+
+    async def async_clear_schedule(self, date: str, hour: str | None = None) -> None:
+        """Clear schedule entries."""
+        if hour:
+            await self._storage.async_clear_hour_schedule(date, hour)
+        else:
+            await self._storage.async_clear_date_schedule(date)
+        await self.async_request_refresh()
+
+    async def async_apply_mode_now(self, mode: str) -> None:
+        """Manually apply a mode immediately."""
+        await self._async_apply_mode(mode)

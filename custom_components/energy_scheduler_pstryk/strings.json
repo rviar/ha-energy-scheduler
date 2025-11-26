@@ -1,0 +1,72 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energy Scheduler Pstryk",
+        "description": "Configure the energy scheduler integration. Select the sensors for energy prices and the inverter mode entity.",
+        "data": {
+          "price_buy_sensor": "Buy Price Sensor",
+          "price_sell_sensor": "Sell Price Sensor",
+          "inverter_mode_entity": "Inverter Mode Entity",
+          "soc_sensor": "SOC Sensor (optional)"
+        },
+        "data_description": {
+          "price_buy_sensor": "Sensor providing buy energy prices with 'data' attribute",
+          "price_sell_sensor": "Sensor providing sell energy prices with 'data' attribute",
+          "inverter_mode_entity": "Input select entity controlling inverter modes",
+          "soc_sensor": "Optional sensor providing battery state of charge"
+        }
+      },
+      "default_mode": {
+        "title": "Default Mode",
+        "description": "Select the default inverter mode to apply when no scheduled action is active.",
+        "data": {
+          "default_mode": "Default Mode"
+        },
+        "data_description": {
+          "default_mode": "Mode to apply after scheduled actions complete"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found",
+      "invalid_mode": "Invalid mode selected"
+    },
+    "abort": {
+      "already_configured": "Integration is already configured",
+      "no_inverter_modes": "No modes found in the inverter mode entity"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Energy Scheduler Options",
+        "description": "Update the energy scheduler configuration.",
+        "data": {
+          "price_buy_sensor": "Buy Price Sensor",
+          "price_sell_sensor": "Sell Price Sensor",
+          "inverter_mode_entity": "Inverter Mode Entity",
+          "soc_sensor": "SOC Sensor (optional)",
+          "default_mode": "Default Mode"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found"
+    }
+  },
+  "services": {
+    "set_schedule": {
+      "name": "Set Schedule",
+      "description": "Set a scheduled action for a specific hour"
+    },
+    "clear_schedule": {
+      "name": "Clear Schedule",
+      "description": "Clear scheduled actions for a date or specific hour"
+    },
+    "apply_mode": {
+      "name": "Apply Mode",
+      "description": "Immediately apply an inverter mode"
+    }
+  }
+}

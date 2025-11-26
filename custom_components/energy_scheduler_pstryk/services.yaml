@@ -1,0 +1,91 @@
+set_schedule:
+  name: Set Schedule
+  description: Set a scheduled action for a specific hour
+  fields:
+    date:
+      name: Date
+      description: The date for the schedule (YYYY-MM-DD format)
+      required: true
+      example: "2025-11-26"
+      selector:
+        date:
+    hour:
+      name: Hour
+      description: The hour for the schedule (0-23)
+      required: true
+      example: 14
+      selector:
+        number:
+          min: 0
+          max: 23
+          mode: box
+    action:
+      name: Action
+      description: The action/mode to apply
+      required: true
+      example: "charge_battery"
+      selector:
+        text:
+    soc_limit:
+      name: SOC Limit
+      description: Stop action when SOC reaches this percentage (0-100)
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 0
+          max: 100
+          mode: slider
+          unit_of_measurement: "%"
+    full_hour:
+      name: Full Hour
+      description: Run action for the entire hour
+      required: false
+      default: false
+      selector:
+        boolean:
+    minutes:
+      name: Minutes
+      description: Run action for this many minutes of the hour
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 60
+          mode: slider
+          unit_of_measurement: "min"
+
+clear_schedule:
+  name: Clear Schedule
+  description: Clear scheduled actions
+  fields:
+    date:
+      name: Date
+      description: The date to clear (YYYY-MM-DD format)
+      required: true
+      example: "2025-11-26"
+      selector:
+        date:
+    hour:
+      name: Hour
+      description: The specific hour to clear (optional, clears entire day if not specified)
+      required: false
+      example: 14
+      selector:
+        number:
+          min: 0
+          max: 23
+          mode: box
+
+apply_mode:
+  name: Apply Mode
+  description: Immediately apply an inverter mode
+  fields:
+    mode:
+      name: Mode
+      description: The mode to apply immediately
+      required: true
+      example: "charge_battery"
+      selector:
+        text:
