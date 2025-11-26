@@ -131,6 +131,18 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def _async_register_panel(hass: HomeAssistant) -> None:
     """Register the frontend panel."""
+    # Check if panel already registered
+    if DOMAIN in hass.data.get("frontend_panels", {}):
+        _LOGGER.debug("Panel already registered, skipping")
+        return
+
+    # Add static path for panel files
+    hass.http.register_static_path(
+        "/energy_scheduler_pstryk",
+        str(Path(__file__).parent.parent.parent / "www" / "energy_scheduler_pstryk"),
+        cache_headers=False,
+    )
+
     # Register the panel
     frontend.async_register_built_in_panel(
         hass,
@@ -147,13 +159,6 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
             }
         },
         require_admin=False,
-    )
-
-    # Add static path for panel files
-    hass.http.register_static_path(
-        "/energy_scheduler_pstryk",
-        str(Path(__file__).parent.parent.parent / "www" / "energy_scheduler_pstryk"),
-        cache_headers=False,
     )
 
     _LOGGER.debug("Registered Energy Scheduler panel")
