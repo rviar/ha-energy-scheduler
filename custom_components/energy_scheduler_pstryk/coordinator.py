@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -165,13 +165,21 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         """Update data via coordinator."""
         return await self._async_fetch_data()
 
-    @callback
     async def _async_check_schedule(self, now: datetime) -> None:
         """Check and apply scheduled actions."""
         local_now = dt_util.as_local(now)
         current_date = local_now.strftime("%Y-%m-%d")
         current_hour = str(local_now.hour)
         current_minute = local_now.minute
+
+        # Sync current action with actual inverter state (handles external changes)
+        actual_mode = self._get_current_inverter_mode()
+        if actual_mode and self._current_action != actual_mode:
+            _LOGGER.debug(
+                "Inverter mode changed externally: %s -> %s",
+                self._current_action, actual_mode
+            )
+            self._current_action = actual_mode
 
         # Get the schedule for this hour
         hour_schedule = self._storage.get_hour_schedule(current_date, current_hour)
@@ -182,50 +190,51 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             full_hour = hour_schedule.get("full_hour", False)
             minutes = hour_schedule.get("minutes")
 
-            # Check if we need to apply this action
-            if action and action != self.default_mode:
-                should_apply = True
-                should_revert = False
+            if not action:
+                return
 
-                # Check SOC limit if specified
-                if soc_limit is not None and self.soc_sensor:
-                    current_soc = self._get_current_soc()
-                    if current_soc is not None and current_soc >= soc_limit:
-                        should_apply = False
-                        should_revert = True
+            should_apply = True
+            should_revert = False
+
+            # Check SOC limit if specified
+            if soc_limit is not None and self.soc_sensor:
+                current_soc = self._get_current_soc()
+                if current_soc is not None and current_soc >= soc_limit:
+                    should_apply = False
+                    should_revert = self._current_action == action
+                    if should_revert:
                         _LOGGER.info(
-                            "SOC limit reached (%s >= %s), reverting to default mode",
+                            "SOC limit reached (%s%% >= %s%%), reverting to default mode",
                             current_soc, soc_limit
                         )
 
-                # Check minutes limit
-                if minutes is not None and not full_hour:
-                    if current_minute >= minutes:
-                        should_apply = False
-                        should_revert = True
+            # Check minutes limit (> instead of >= to include the target minute)
+            if minutes is not None and not full_hour:
+                if current_minute > minutes:
+                    should_apply = False
+                    should_revert = self._current_action == action
+                    if should_revert:
                         _LOGGER.info(
-                            "Minutes limit reached (%s >= %s), reverting to default mode",
+                            "Minutes limit exceeded (%s > %s), reverting to default mode",
                             current_minute, minutes
                         )
 
-                if should_apply and self._current_action != action:
-                    await self._async_apply_mode(action)
-                elif should_revert:
-                    await self._async_apply_default_mode()
+            if should_apply and self._current_action != action:
+                await self._async_apply_mode(action)
+            elif should_revert and self._current_action != self.default_mode:
+                await self._async_apply_default_mode()
 
         else:
-            # No schedule for this hour - check if we need to revert
+            # No schedule for this hour - revert to default if we're not already there
             if self._current_action and self._current_action != self.default_mode:
-                # Check if previous hour had an action
-                prev_hour = str((local_now.hour - 1) % 24)
-                prev_date = current_date
-                if local_now.hour == 0:
-                    prev_date = (local_now - timedelta(days=1)).strftime("%Y-%m-%d")
+                await self._async_apply_default_mode()
 
-                prev_schedule = self._storage.get_hour_schedule(prev_date, prev_hour)
-                if prev_schedule:
-                    # Previous hour had action, this hour doesn't - revert
-                    await self._async_apply_default_mode()
+    def _get_current_inverter_mode(self) -> str | None:
+        """Get current inverter mode from entity."""
+        state = self.hass.states.get(self.inverter_mode_entity)
+        if state is None:
+            return None
+        return state.state
 
     def _get_current_soc(self) -> int | None:
         """Get current SOC value from sensor."""
