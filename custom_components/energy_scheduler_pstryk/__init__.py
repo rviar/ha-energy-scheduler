@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from aiohttp import web
 
 from homeassistant.components import frontend, panel_custom
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -32,6 +34,9 @@ from .coordinator import EnergySchedulerCoordinator
 from .storage_manager import ScheduleStorageManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# URL path for serving static files
+STATIC_URL_PATH = f"/api/{DOMAIN}/static"
 
 PLATFORMS: list[Platform] = []
 
@@ -140,26 +145,56 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
 
     _LOGGER.debug("Panel static path: %s, exists: %s", www_path, www_path.exists())
 
-    # Register static path using local path registration
-    hass.http.register_static_path(
-        f"/local/{DOMAIN}",
-        str(www_path),
-        cache_headers=False,
-    )
+    # Register static file view to serve panel.js
+    hass.http.register_view(PanelStaticView(www_path))
 
-    # Use panel_custom to register the panel properly
+    # Register panel using the HTTP URL
     await panel_custom.async_register_panel(
         hass,
         webcomponent_name=PANEL_NAME,
         frontend_url_path=DOMAIN,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"/local/{DOMAIN}/panel.js",
+        js_url=f"{STATIC_URL_PATH}/panel.js",
         require_admin=False,
-        config={},
     )
 
     _LOGGER.debug("Registered Energy Scheduler panel")
+
+
+class PanelStaticView(HomeAssistantView):
+    """View to serve static panel files."""
+
+    url = f"{STATIC_URL_PATH}/{{filename}}"
+    name = f"api:{DOMAIN}:static"
+    requires_auth = False  # Panel JS must load without auth
+
+    def __init__(self, www_path: Path) -> None:
+        """Initialize the static view."""
+        self._www_path = www_path
+
+    async def get(self, request: web.Request, filename: str) -> web.Response:
+        """Handle GET request for static files."""
+        # Security: only allow specific files
+        allowed_files = {"panel.js"}
+        if filename not in allowed_files:
+            return web.Response(status=404)
+
+        file_path = self._www_path / filename
+        if not file_path.exists():
+            _LOGGER.error("Static file not found: %s", file_path)
+            return web.Response(status=404)
+
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            return web.Response(
+                text=content,
+                content_type="application/javascript",
+                headers={"Cache-Control": "no-cache"},
+            )
+        except Exception as err:
+            _LOGGER.error("Error reading static file %s: %s", filename, err)
+            return web.Response(status=500)
 
 
 async def _async_register_services(
@@ -210,9 +245,6 @@ async def _async_register_api(
     hass: HomeAssistant, coordinator: EnergySchedulerCoordinator
 ) -> None:
     """Register API endpoints for the panel."""
-    from aiohttp import web
-
-    from homeassistant.components.http import HomeAssistantView
 
     class EnergySchedulerDataView(HomeAssistantView):
         """API view for getting scheduler data."""
