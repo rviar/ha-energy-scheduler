@@ -11,7 +11,6 @@ class EnergySchedulerPanel extends HTMLElement {
     this._config = null;
     this._data = null;
     this._schedule = {};
-    this._selectedDate = this._formatDate(new Date());
     this._chart = null;
     this._dialogOpen = false;
   }
@@ -33,6 +32,21 @@ class EnergySchedulerPanel extends HTMLElement {
 
   _formatHour(hour) {
     return `${hour.toString().padStart(2, '0')}:00`;
+  }
+
+  _formatDateTime(date, hour) {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d = new Date(date);
+    const dayName = dayNames[d.getDay()];
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    return `${dayName} ${day}/${month} ${this._formatHour(hour)}`;
+  }
+
+  _formatShortDate(date) {
+    const d = new Date(date);
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
   }
 
   async _initialize() {
@@ -62,16 +76,6 @@ class EnergySchedulerPanel extends HTMLElement {
       this._updateScheduleList();
     } catch (error) {
       console.error('Failed to load data:', error);
-    }
-  }
-
-  async _loadSchedule(date) {
-    try {
-      const response = await this._hass.callApi('GET', `energy_scheduler_pstryk/schedule?date=${date}`);
-      return response;
-    } catch (error) {
-      console.error('Failed to load schedule:', error);
-      return {};
     }
   }
 
@@ -109,7 +113,6 @@ class EnergySchedulerPanel extends HTMLElement {
   }
 
   _startAutoRefresh() {
-    // Refresh data every minute
     setInterval(() => {
       this._loadData();
     }, 60000);
@@ -161,34 +164,9 @@ class EnergySchedulerPanel extends HTMLElement {
         color: var(--primary-text-color);
       }
 
-      .date-selector {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .date-selector input {
-        padding: 8px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 4px;
-        background: var(--card-background-color);
-        color: var(--primary-text-color);
+      .header-info {
         font-size: 14px;
-      }
-
-      .date-nav-btn {
-        padding: 8px 12px;
-        border: none;
-        border-radius: 4px;
-        background: var(--primary-color);
-        color: var(--text-primary-color);
-        cursor: pointer;
-        font-size: 14px;
-        transition: opacity 0.2s;
-      }
-
-      .date-nav-btn:hover {
-        opacity: 0.8;
+        color: var(--secondary-text-color);
       }
 
       .card {
@@ -219,9 +197,23 @@ class EnergySchedulerPanel extends HTMLElement {
 
       .schedule-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
         gap: 8px;
         margin-top: 16px;
+      }
+
+      .day-separator {
+        grid-column: 1 / -1;
+        padding: 8px 0;
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--primary-color);
+        border-bottom: 1px solid var(--divider-color);
+        margin-top: 8px;
+      }
+
+      .day-separator:first-child {
+        margin-top: 0;
       }
 
       .hour-slot {
@@ -246,21 +238,33 @@ class EnergySchedulerPanel extends HTMLElement {
 
       .hour-slot.current {
         border-color: var(--success-color, #4CAF50);
+        background: rgba(76, 175, 80, 0.1);
       }
 
       .hour-slot .time {
         font-weight: 600;
-        font-size: 14px;
+        font-size: 16px;
         margin-bottom: 4px;
       }
 
       .hour-slot .prices {
         font-size: 11px;
         color: var(--secondary-text-color);
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .hour-slot .prices .buy {
+        color: #2196F3;
+      }
+
+      .hour-slot .prices .sell {
+        color: #4CAF50;
       }
 
       .hour-slot .action {
-        font-size: 12px;
+        font-size: 11px;
         margin-top: 4px;
         color: var(--primary-color);
         font-weight: 500;
@@ -495,13 +499,6 @@ class EnergySchedulerPanel extends HTMLElement {
         color: var(--secondary-text-color);
       }
 
-      .empty-state svg {
-        width: 64px;
-        height: 64px;
-        margin-bottom: 16px;
-        opacity: 0.5;
-      }
-
       @media (max-width: 600px) {
         .header {
           flex-direction: column;
@@ -517,11 +514,12 @@ class EnergySchedulerPanel extends HTMLElement {
         }
 
         .hour-slot .time {
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .hour-slot .prices {
-          display: none;
+          flex-direction: column;
+          gap: 2px;
         }
       }
     `;
@@ -531,12 +529,7 @@ class EnergySchedulerPanel extends HTMLElement {
     return `
       <div class="header">
         <h1>⚡ Energy Scheduler</h1>
-        <div class="date-selector">
-          <button class="date-nav-btn" id="prevDay">◀</button>
-          <input type="date" id="dateInput" value="${this._selectedDate}">
-          <button class="date-nav-btn" id="nextDay">▶</button>
-          <button class="date-nav-btn" id="today">Today</button>
-        </div>
+        <div class="header-info">Next 48 hours</div>
       </div>
 
       <div class="card">
@@ -601,7 +594,7 @@ class EnergySchedulerPanel extends HTMLElement {
           <div class="form-group" id="fullHourGroup" style="display: none;">
             <div class="checkbox-group">
               <input type="checkbox" id="fullHour">
-              <label for="fullHour">Charge for entire hour</label>
+              <label for="fullHour">Run for entire hour</label>
             </div>
           </div>
 
@@ -625,15 +618,6 @@ class EnergySchedulerPanel extends HTMLElement {
 
   _setupEventListeners() {
     const root = this.shadowRoot;
-
-    // Date navigation
-    root.getElementById('prevDay').addEventListener('click', () => this._changeDate(-1));
-    root.getElementById('nextDay').addEventListener('click', () => this._changeDate(1));
-    root.getElementById('today').addEventListener('click', () => this._goToToday());
-    root.getElementById('dateInput').addEventListener('change', (e) => {
-      this._selectedDate = e.target.value;
-      this._loadData();
-    });
 
     // Modal controls
     root.getElementById('modalClose').addEventListener('click', () => this._closeModal());
@@ -665,25 +649,10 @@ class EnergySchedulerPanel extends HTMLElement {
     });
   }
 
-  _changeDate(delta) {
-    const date = new Date(this._selectedDate);
-    date.setDate(date.getDate() + delta);
-    this._selectedDate = this._formatDate(date);
-    this.shadowRoot.getElementById('dateInput').value = this._selectedDate;
-    this._loadData();
-  }
-
-  _goToToday() {
-    this._selectedDate = this._formatDate(new Date());
-    this.shadowRoot.getElementById('dateInput').value = this._selectedDate;
-    this._loadData();
-  }
-
   _setupChart() {
     const canvas = this.shadowRoot.getElementById('priceChart');
     const ctx = canvas.getContext('2d');
 
-    // Simple line chart implementation without external dependencies
     this._chart = {
       canvas,
       ctx,
@@ -692,27 +661,58 @@ class EnergySchedulerPanel extends HTMLElement {
     };
   }
 
+  _getAvailableHours() {
+    // Get all future hours from price data
+    const now = new Date();
+    const currentHour = now.getHours();
+    const today = this._formatDate(now);
+
+    const buyPrices = this._data?.buy_prices || [];
+    const sellPrices = this._data?.sell_prices || [];
+
+    // Combine and filter future hours
+    const allHours = [];
+    const seenKeys = new Set();
+
+    [...buyPrices, ...sellPrices].forEach(p => {
+      const key = `${p.date}-${p.hour}`;
+      if (seenKeys.has(key)) return;
+
+      // Skip past hours
+      if (p.date === today && p.hour < currentHour) return;
+      if (p.date < today) return;
+
+      seenKeys.add(key);
+      allHours.push({
+        date: p.date,
+        hour: p.hour,
+        buyPrice: buyPrices.find(b => b.date === p.date && b.hour === p.hour)?.value,
+        sellPrice: sellPrices.find(s => s.date === p.date && s.hour === p.hour)?.value
+      });
+    });
+
+    // Sort by date and hour
+    allHours.sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return a.hour - b.hour;
+    });
+
+    return allHours;
+  }
+
   _updateChart() {
     if (!this._data || !this._chart) return;
 
-    const buyPrices = this._data.buy_prices || [];
-    const sellPrices = this._data.sell_prices || [];
+    const hours = this._getAvailableHours();
 
-    // Filter data for selected date
-    const filteredBuy = buyPrices.filter(p => p.date === this._selectedDate);
-    const filteredSell = sellPrices.filter(p => p.date === this._selectedDate);
-
-    this._chart.data.buy = filteredBuy;
-    this._chart.data.sell = filteredSell;
+    this._chart.data.hours = hours;
     this._drawChart();
   }
 
   _drawChart() {
     const { canvas, ctx, data } = this._chart;
-    const buyData = data.buy;
-    const sellData = data.sell;
+    const hours = data.hours || [];
 
-    // Get device pixel ratio for crisp rendering
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
 
@@ -722,23 +722,22 @@ class EnergySchedulerPanel extends HTMLElement {
 
     const width = rect.width;
     const height = rect.height;
-    const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+    const padding = { top: 20, right: 20, bottom: 50, left: 50 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    if (buyData.length === 0 && sellData.length === 0) {
+    if (hours.length === 0) {
       ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('No price data available for this date', width / 2, height / 2);
+      ctx.fillText('No price data available', width / 2, height / 2);
       return;
     }
 
     // Find min/max values
-    const allValues = [...buyData.map(d => d.value), ...sellData.map(d => d.value)];
+    const allValues = hours.flatMap(h => [h.buyPrice, h.sellPrice]).filter(v => v !== undefined);
     const minValue = Math.min(...allValues) * 0.9;
     const maxValue = Math.max(...allValues) * 1.1;
     const valueRange = maxValue - minValue || 1;
@@ -747,7 +746,6 @@ class EnergySchedulerPanel extends HTMLElement {
     ctx.strokeStyle = getComputedStyle(this).getPropertyValue('--divider-color') || '#e0e0e0';
     ctx.lineWidth = 0.5;
 
-    // Horizontal grid lines
     for (let i = 0; i <= 5; i++) {
       const y = padding.top + (chartHeight / 5) * i;
       ctx.beginPath();
@@ -755,7 +753,6 @@ class EnergySchedulerPanel extends HTMLElement {
       ctx.lineTo(width - padding.right, y);
       ctx.stroke();
 
-      // Y-axis labels
       const value = maxValue - (valueRange / 5) * i;
       ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
       ctx.font = '11px sans-serif';
@@ -763,20 +760,25 @@ class EnergySchedulerPanel extends HTMLElement {
       ctx.fillText(value.toFixed(2), padding.left - 8, y + 4);
     }
 
-    // Draw lines
-    const drawLine = (data, color) => {
-      if (data.length === 0) return;
+    const pointSpacing = chartWidth / (hours.length - 1 || 1);
 
+    // Draw lines
+    const drawLine = (getValue, color) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.beginPath();
 
-      data.forEach((point, i) => {
-        const x = padding.left + (chartWidth / 23) * point.hour;
-        const y = padding.top + chartHeight - ((point.value - minValue) / valueRange) * chartHeight;
+      let started = false;
+      hours.forEach((h, i) => {
+        const value = getValue(h);
+        if (value === undefined) return;
 
-        if (i === 0) {
+        const x = padding.left + pointSpacing * i;
+        const y = padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+
+        if (!started) {
           ctx.moveTo(x, y);
+          started = true;
         } else {
           ctx.lineTo(x, y);
         }
@@ -785,9 +787,12 @@ class EnergySchedulerPanel extends HTMLElement {
       ctx.stroke();
 
       // Draw points
-      data.forEach((point) => {
-        const x = padding.left + (chartWidth / 23) * point.hour;
-        const y = padding.top + chartHeight - ((point.value - minValue) / valueRange) * chartHeight;
+      hours.forEach((h, i) => {
+        const value = getValue(h);
+        if (value === undefined) return;
+
+        const x = padding.left + pointSpacing * i;
+        const y = padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
 
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
@@ -796,36 +801,36 @@ class EnergySchedulerPanel extends HTMLElement {
       });
     };
 
-    drawLine(buyData, '#2196F3');
-    drawLine(sellData, '#4CAF50');
+    drawLine(h => h.buyPrice, '#2196F3');
+    drawLine(h => h.sellPrice, '#4CAF50');
 
     // X-axis labels
     ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
 
-    for (let hour = 0; hour < 24; hour += 3) {
-      const x = padding.left + (chartWidth / 23) * hour;
-      ctx.fillText(this._formatHour(hour), x, height - padding.bottom + 20);
-    }
+    const labelInterval = Math.max(1, Math.floor(hours.length / 12));
+    hours.forEach((h, i) => {
+      if (i % labelInterval !== 0 && i !== hours.length - 1) return;
 
-    // Store click areas for interaction
-    this._chartClickAreas = [];
-    const allData = [...buyData, ...sellData];
-    const uniqueHours = [...new Set(allData.map(d => d.hour))];
+      const x = padding.left + pointSpacing * i;
+      const label = `${this._formatHour(h.hour)}`;
+      const dateLabel = this._formatShortDate(h.date);
 
-    uniqueHours.forEach(hour => {
-      const x = padding.left + (chartWidth / 23) * hour;
-      this._chartClickAreas.push({
-        hour,
-        x: x - 15,
-        y: padding.top,
-        width: 30,
-        height: chartHeight
-      });
+      ctx.fillText(label, x, height - padding.bottom + 15);
+      ctx.fillText(dateLabel, x, height - padding.bottom + 28);
     });
 
-    // Add click handler
+    // Store click areas
+    this._chartClickAreas = hours.map((h, i) => ({
+      date: h.date,
+      hour: h.hour,
+      x: padding.left + pointSpacing * i - 15,
+      y: padding.top,
+      width: 30,
+      height: chartHeight
+    }));
+
     canvas.onclick = (e) => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -833,7 +838,7 @@ class EnergySchedulerPanel extends HTMLElement {
 
       for (const area of this._chartClickAreas) {
         if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
-          this._openModal(area.hour);
+          this._openModal(area.date, area.hour);
           break;
         }
       }
@@ -842,52 +847,63 @@ class EnergySchedulerPanel extends HTMLElement {
 
   _updateScheduleList() {
     const grid = this.shadowRoot.getElementById('scheduleGrid');
-    const currentHour = new Date().getHours();
-    const isToday = this._selectedDate === this._formatDate(new Date());
-    const daySchedule = this._schedule[this._selectedDate] || {};
+    const hours = this._getAvailableHours();
 
-    // Get price data for this date
-    const buyPrices = (this._data?.buy_prices || []).filter(p => p.date === this._selectedDate);
-    const sellPrices = (this._data?.sell_prices || []).filter(p => p.date === this._selectedDate);
+    const now = new Date();
+    const currentHour = now.getHours();
+    const today = this._formatDate(now);
 
     let html = '';
+    let currentDate = null;
 
-    for (let hour = 0; hour < 24; hour++) {
-      const hourStr = hour.toString();
-      const schedule = daySchedule[hourStr];
+    hours.forEach(h => {
+      // Add day separator
+      if (h.date !== currentDate) {
+        currentDate = h.date;
+        const isToday = h.date === today;
+        const isTomorrow = h.date === this._formatDate(new Date(now.getTime() + 86400000));
+        let dayLabel = this._formatShortDate(h.date);
+        if (isToday) dayLabel = 'Today';
+        if (isTomorrow) dayLabel = 'Tomorrow';
+
+        html += `<div class="day-separator">${dayLabel}</div>`;
+      }
+
+      const daySchedule = this._schedule[h.date] || {};
+      const schedule = daySchedule[h.hour.toString()];
       const isScheduled = !!schedule;
-      const isCurrent = isToday && hour === currentHour;
-
-      const buyPrice = buyPrices.find(p => p.hour === hour);
-      const sellPrice = sellPrices.find(p => p.hour === hour);
+      const isCurrent = h.date === today && h.hour === currentHour;
 
       let classes = 'hour-slot';
       if (isScheduled) classes += ' scheduled';
       if (isCurrent) classes += ' current';
 
       html += `
-        <div class="${classes}" data-hour="${hour}">
-          <div class="time">${this._formatHour(hour)}</div>
+        <div class="${classes}" data-date="${h.date}" data-hour="${h.hour}">
+          <div class="time">${this._formatHour(h.hour)}</div>
           <div class="prices">
-            ${buyPrice ? `B: ${buyPrice.value.toFixed(2)}` : ''}
-            ${sellPrice ? ` S: ${sellPrice.value.toFixed(2)}` : ''}
+            ${h.buyPrice !== undefined ? `<span class="buy">B:${h.buyPrice.toFixed(2)}</span>` : ''}
+            ${h.sellPrice !== undefined ? `<span class="sell">S:${h.sellPrice.toFixed(2)}</span>` : ''}
           </div>
           ${isScheduled ? `<div class="action">${schedule.action}</div>` : ''}
         </div>
       `;
+    });
+
+    if (html === '') {
+      html = '<div class="empty-state">No price data available</div>';
     }
 
     grid.innerHTML = html;
 
-    // Add click handlers
     grid.querySelectorAll('.hour-slot').forEach(slot => {
       slot.addEventListener('click', () => {
+        const date = slot.dataset.date;
         const hour = parseInt(slot.dataset.hour);
-        this._openModal(hour);
+        this._openModal(date, hour);
       });
     });
 
-    // Update current mode display
     this._updateCurrentMode();
   }
 
@@ -901,28 +917,23 @@ class EnergySchedulerPanel extends HTMLElement {
     }
   }
 
-  _openModal(hour) {
+  _openModal(date, hour) {
     const modal = this.shadowRoot.getElementById('modalOverlay');
     const hourStr = hour.toString();
-    const daySchedule = this._schedule[this._selectedDate] || {};
+    const daySchedule = this._schedule[date] || {};
     const schedule = daySchedule[hourStr];
 
-    // Update modal title
     this.shadowRoot.getElementById('modalTitle').textContent =
-      `Schedule - ${this._formatHour(hour)} on ${this._selectedDate}`;
+      `Schedule - ${this._formatDateTime(date, hour)}`;
 
-    // Update price info
-    const buyPrices = (this._data?.buy_prices || []).filter(p => p.date === this._selectedDate);
-    const sellPrices = (this._data?.sell_prices || []).filter(p => p.date === this._selectedDate);
-    const buyPrice = buyPrices.find(p => p.hour === hour);
-    const sellPrice = sellPrices.find(p => p.hour === hour);
+    const hours = this._getAvailableHours();
+    const hourData = hours.find(h => h.date === date && h.hour === hour);
 
     this.shadowRoot.getElementById('modalBuyPrice').textContent =
-      buyPrice ? `${buyPrice.value.toFixed(4)}` : 'N/A';
+      hourData?.buyPrice !== undefined ? hourData.buyPrice.toFixed(4) : 'N/A';
     this.shadowRoot.getElementById('modalSellPrice').textContent =
-      sellPrice ? `${sellPrice.value.toFixed(4)}` : 'N/A';
+      hourData?.sellPrice !== undefined ? hourData.sellPrice.toFixed(4) : 'N/A';
 
-    // Populate action options
     const actionSelect = this.shadowRoot.getElementById('actionSelect');
     const modes = this._data?.inverter_modes || [];
     const defaultMode = this._data?.default_mode || '';
@@ -934,7 +945,6 @@ class EnergySchedulerPanel extends HTMLElement {
       actionSelect.innerHTML += `<option value="${mode}" ${selected}>${mode}${isDefault}</option>`;
     });
 
-    // Set form values from existing schedule
     if (schedule) {
       this.shadowRoot.getElementById('socLimit').value = schedule.soc_limit || 100;
       this.shadowRoot.getElementById('socLimitValue').textContent = `${schedule.soc_limit || 100}%`;
@@ -951,10 +961,9 @@ class EnergySchedulerPanel extends HTMLElement {
       this.shadowRoot.getElementById('modalClear').style.display = 'none';
     }
 
-    // Toggle parameter fields based on action
     this._toggleParameterFields(schedule?.action || '');
 
-    // Store selected hour
+    this._modalDate = date;
     this._modalHour = hour;
     this._dialogOpen = true;
 
@@ -1000,7 +1009,7 @@ class EnergySchedulerPanel extends HTMLElement {
     }
 
     await this._saveSchedule(
-      this._selectedDate,
+      this._modalDate,
       this._modalHour,
       action,
       socLimit,
@@ -1012,7 +1021,7 @@ class EnergySchedulerPanel extends HTMLElement {
   }
 
   async _handleClear() {
-    await this._clearSchedule(this._selectedDate, this._modalHour);
+    await this._clearSchedule(this._modalDate, this._modalHour);
     this._closeModal();
   }
 
@@ -1027,8 +1036,5 @@ class EnergySchedulerPanel extends HTMLElement {
   }
 }
 
-// Register the custom element
 customElements.define('energy-scheduler-panel', EnergySchedulerPanel);
-
-// Export for Home Assistant panel registration
 window.customPanel = EnergySchedulerPanel;
