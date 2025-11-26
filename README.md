@@ -65,11 +65,7 @@ After installation, a new **Energy Scheduler** item appears in the sidebar. Clic
 
 ### Option 2: Lovelace Card
 
-You can also add the scheduler as a card on any dashboard:
-
-1. Go to **Settings** → **Dashboards** → **Resources**
-2. Add resource: `/api/energy_scheduler_pstryk/static/energy-scheduler-card.js` (type: JavaScript Module)
-3. Add card to your dashboard:
+You can also add the scheduler as a card on any dashboard. The card is automatically registered - just add it to your dashboard:
 
 ```yaml
 type: custom:energy-scheduler-card

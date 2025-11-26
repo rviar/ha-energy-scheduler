@@ -159,11 +159,13 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         require_admin=False,
     )
 
-    _LOGGER.debug("Registered Energy Scheduler panel")
-    _LOGGER.info(
-        "Lovelace card available. Add to resources: %s/energy-scheduler-card.js",
-        STATIC_URL_PATH
-    )
+    # Register Lovelace card as frontend module (auto-loads without manual resource adding)
+    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js"
+
+    # Add to frontend extra modules so card auto-registers
+    frontend.add_extra_js_url(hass, card_url)
+
+    _LOGGER.debug("Registered Energy Scheduler panel and card")
 
 
 class PanelStaticView(HomeAssistantView):
