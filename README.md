@@ -59,13 +59,9 @@ Before installing, ensure you have:
 
 ## Usage
 
-### Option 1: Sidebar Panel
+### Lovelace Card
 
-After installation, a new **Energy Scheduler** item appears in the sidebar. Click it to open the full scheduling interface.
-
-### Option 2: Lovelace Card
-
-You can also add the scheduler as a card on any dashboard. The card is automatically registered - just add it to your dashboard:
+The card is automatically registered after installation. Just add it to your dashboard:
 
 ```yaml
 type: custom:energy-scheduler-card

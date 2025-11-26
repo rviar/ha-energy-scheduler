@@ -8,7 +8,7 @@ from typing import Any
 import voluptuous as vol
 from aiohttp import web
 
-from homeassistant.components import frontend, panel_custom
+from homeassistant.components import frontend
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -23,9 +23,6 @@ from .const import (
     ATTR_MINUTES,
     ATTR_SOC_LIMIT,
     DOMAIN,
-    PANEL_ICON,
-    PANEL_NAME,
-    PANEL_TITLE,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
     SERVICE_SET_SCHEDULE,
@@ -91,8 +88,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "storage": storage,
     }
 
-    # Register panel
-    await _async_register_panel(hass)
+    # Register Lovelace card
+    await _async_register_card(hass)
 
     # Register services
     await _async_register_services(hass, coordinator)
@@ -121,9 +118,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = data["coordinator"]
         await coordinator.async_shutdown()
 
-        # Remove panel if no more entries
-        if not hass.data[DOMAIN]:
-            frontend.async_remove_panel(hass, DOMAIN)
 
     return unload_ok
 
@@ -133,47 +127,29 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def _async_register_panel(hass: HomeAssistant) -> None:
-    """Register the frontend panel."""
-    # Check if panel already registered
-    if DOMAIN in hass.data.get("frontend_panels", {}):
-        _LOGGER.debug("Panel already registered, skipping")
-        return
-
+async def _async_register_card(hass: HomeAssistant) -> None:
+    """Register the Lovelace card."""
     # Path to www folder inside custom_components
     www_path = Path(__file__).parent / "www"
 
-    _LOGGER.debug("Panel static path: %s, exists: %s", www_path, www_path.exists())
+    _LOGGER.debug("Card static path: %s, exists: %s", www_path, www_path.exists())
 
-    # Register static file view to serve panel.js
-    hass.http.register_view(PanelStaticView(www_path))
-
-    # Register panel using the HTTP URL
-    await panel_custom.async_register_panel(
-        hass,
-        webcomponent_name=PANEL_NAME,
-        frontend_url_path=DOMAIN,
-        sidebar_title=PANEL_TITLE,
-        sidebar_icon=PANEL_ICON,
-        js_url=f"{STATIC_URL_PATH}/panel.js",
-        require_admin=False,
-    )
+    # Register static file view to serve card JS
+    hass.http.register_view(CardStaticView(www_path))
 
     # Register Lovelace card as frontend module (auto-loads without manual resource adding)
     card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js"
-
-    # Add to frontend extra modules so card auto-registers
     frontend.add_extra_js_url(hass, card_url)
 
-    _LOGGER.debug("Registered Energy Scheduler panel and card")
+    _LOGGER.debug("Registered Energy Scheduler card")
 
 
-class PanelStaticView(HomeAssistantView):
-    """View to serve static panel files."""
+class CardStaticView(HomeAssistantView):
+    """View to serve static card files."""
 
     url = f"{STATIC_URL_PATH}/{{filename}}"
     name = f"api:{DOMAIN}:static"
-    requires_auth = False  # Panel JS must load without auth
+    requires_auth = False  # Card JS must load without auth
 
     def __init__(self, www_path: Path) -> None:
         """Initialize the static view."""
@@ -182,7 +158,7 @@ class PanelStaticView(HomeAssistantView):
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Handle GET request for static files."""
         # Security: only allow specific files
-        allowed_files = {"panel.js", "energy-scheduler-card.js"}
+        allowed_files = {"energy-scheduler-card.js"}
         if filename not in allowed_files:
             return web.Response(status=404)
 
