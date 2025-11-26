@@ -651,14 +651,21 @@ class EnergySchedulerPanel extends HTMLElement {
 
   _setupChart() {
     const canvas = this.shadowRoot.getElementById('priceChart');
+    if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
 
     this._chart = {
       canvas,
       ctx,
-      data: { buy: [], sell: [] },
+      data: { hours: [] },
       draw: () => this._drawChart()
     };
+
+    // Redraw on resize
+    window.addEventListener('resize', () => {
+      if (this._chart) this._drawChart();
+    });
   }
 
   _getAvailableHours() {
@@ -710,11 +717,20 @@ class EnergySchedulerPanel extends HTMLElement {
   }
 
   _drawChart() {
+    if (!this._chart) return;
+
     const { canvas, ctx, data } = this._chart;
     const hours = data.hours || [];
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+
+    // Skip if not visible yet
+    if (rect.width === 0 || rect.height === 0) {
+      // Retry after a short delay
+      setTimeout(() => this._drawChart(), 100);
+      return;
+    }
 
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;

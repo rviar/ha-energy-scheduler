@@ -7,8 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
+from homeassistant.components import frontend, panel_custom
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -25,7 +24,6 @@ from .const import (
     PANEL_ICON,
     PANEL_NAME,
     PANEL_TITLE,
-    PANEL_URL,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
     SERVICE_SET_SCHEDULE,
@@ -142,31 +140,23 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
 
     _LOGGER.debug("Panel static path: %s, exists: %s", www_path, www_path.exists())
 
-    # Add static path for panel files
-    await hass.http.async_register_static_paths([
-        StaticPathConfig(
-            url_path="/energy_scheduler_pstryk",
-            path=str(www_path),
-            cache_headers=False,
-        )
-    ])
+    # Register static path using local path registration
+    hass.http.register_static_path(
+        f"/local/{DOMAIN}",
+        str(www_path),
+        cache_headers=False,
+    )
 
-    # Register the panel
-    frontend.async_register_built_in_panel(
+    # Use panel_custom to register the panel properly
+    await panel_custom.async_register_panel(
         hass,
-        component_name="custom",
+        webcomponent_name=PANEL_NAME,
+        frontend_url_path=DOMAIN,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        frontend_url_path=DOMAIN,
-        config={
-            "_panel_custom": {
-                "name": PANEL_NAME,
-                "embed_iframe": False,
-                "trust_external": False,
-                "module_url": PANEL_URL,
-            }
-        },
+        module_url=f"/local/{DOMAIN}/panel.js",
         require_admin=False,
+        config={},
     )
 
     _LOGGER.debug("Registered Energy Scheduler panel")
