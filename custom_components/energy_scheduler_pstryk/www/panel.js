@@ -3,6 +3,21 @@
  * Provides UI for scheduling actions based on energy prices from Pstryk API
  */
 
+// Load Chart.js from CDN
+const loadChartJS = () => {
+  return new Promise((resolve, reject) => {
+    if (window.Chart) {
+      resolve(window.Chart);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+    script.onload = () => resolve(window.Chart);
+    script.onerror = () => reject(new Error('Failed to load Chart.js'));
+    document.head.appendChild(script);
+  });
+};
+
 class EnergySchedulerPanel extends HTMLElement {
   constructor() {
     super();
@@ -12,6 +27,7 @@ class EnergySchedulerPanel extends HTMLElement {
     this._data = null;
     this._schedule = {};
     this._chart = null;
+    this._chartInstance = null;
     this._dialogOpen = false;
   }
 
@@ -54,7 +70,7 @@ class EnergySchedulerPanel extends HTMLElement {
     this._render();
     await this._loadConfig();
     await this._loadData();
-    this._setupChart();
+    await this._setupChart();
     this._startAutoRefresh();
   }
 
@@ -191,8 +207,8 @@ class EnergySchedulerPanel extends HTMLElement {
       }
 
       #priceChart {
-        width: 100%;
-        height: 100%;
+        width: 100% !important;
+        height: 100% !important;
       }
 
       .schedule-grid {
@@ -499,6 +515,14 @@ class EnergySchedulerPanel extends HTMLElement {
         color: var(--secondary-text-color);
       }
 
+      .chart-loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 300px;
+        color: var(--secondary-text-color);
+      }
+
       @media (max-width: 600px) {
         .header {
           flex-direction: column;
@@ -536,16 +560,6 @@ class EnergySchedulerPanel extends HTMLElement {
         <div class="card-title">Energy Prices</div>
         <div class="chart-container">
           <canvas id="priceChart"></canvas>
-        </div>
-        <div class="legend">
-          <div class="legend-item">
-            <div class="legend-color buy"></div>
-            <span>Buy Price</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-color sell"></div>
-            <span>Sell Price</span>
-          </div>
         </div>
       </div>
 
@@ -649,23 +663,176 @@ class EnergySchedulerPanel extends HTMLElement {
     });
   }
 
-  _setupChart() {
+  async _setupChart() {
     const canvas = this.shadowRoot.getElementById('priceChart');
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    try {
+      await loadChartJS();
 
-    this._chart = {
-      canvas,
-      ctx,
-      data: { hours: [] },
-      draw: () => this._drawChart()
-    };
+      const ctx = canvas.getContext('2d');
 
-    // Redraw on resize
-    window.addEventListener('resize', () => {
-      if (this._chart) this._drawChart();
-    });
+      // Get computed styles for theming
+      const textColor = getComputedStyle(this).getPropertyValue('--primary-text-color') || '#333';
+      const gridColor = getComputedStyle(this).getPropertyValue('--divider-color') || '#e0e0e0';
+
+      this._chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Buy Price',
+              data: [],
+              borderColor: '#2196F3',
+              backgroundColor: 'rgba(33, 150, 243, 0.1)',
+              borderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 8,
+              pointBackgroundColor: '#2196F3',
+              pointHoverBackgroundColor: '#2196F3',
+              pointBorderColor: '#fff',
+              pointHoverBorderColor: '#fff',
+              pointBorderWidth: 2,
+              pointHoverBorderWidth: 3,
+              tension: 0.3,
+              fill: false
+            },
+            {
+              label: 'Sell Price',
+              data: [],
+              borderColor: '#4CAF50',
+              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              borderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 8,
+              pointBackgroundColor: '#4CAF50',
+              pointHoverBackgroundColor: '#4CAF50',
+              pointBorderColor: '#fff',
+              pointHoverBorderColor: '#fff',
+              pointBorderWidth: 2,
+              pointHoverBorderWidth: 3,
+              tension: 0.3,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                color: textColor,
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 20
+              }
+            },
+            tooltip: {
+              enabled: true,
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#fff',
+              bodyColor: '#fff',
+              titleFont: {
+                size: 14,
+                weight: 'bold'
+              },
+              bodyFont: {
+                size: 13
+              },
+              padding: 12,
+              cornerRadius: 8,
+              displayColors: true,
+              callbacks: {
+                title: (context) => {
+                  const idx = context[0].dataIndex;
+                  const hours = this._chartHoursData || [];
+                  if (hours[idx]) {
+                    return this._formatDateTime(hours[idx].date, hours[idx].hour);
+                  }
+                  return context[0].label;
+                },
+                label: (context) => {
+                  const value = context.parsed.y;
+                  const label = context.dataset.label;
+                  return `${label}: ${value.toFixed(4)} PLN/kWh`;
+                },
+                afterBody: (context) => {
+                  const idx = context[0].dataIndex;
+                  const hours = this._chartHoursData || [];
+                  if (hours[idx]) {
+                    const h = hours[idx];
+                    const schedule = this._schedule[h.date]?.[h.hour.toString()];
+                    if (schedule) {
+                      return [`\n📅 Scheduled: ${schedule.action}`];
+                    }
+                  }
+                  return [];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              display: true,
+              grid: {
+                color: gridColor,
+                drawBorder: false
+              },
+              ticks: {
+                color: textColor,
+                maxRotation: 45,
+                minRotation: 45,
+                autoSkip: true,
+                maxTicksLimit: 12
+              }
+            },
+            y: {
+              display: true,
+              grid: {
+                color: gridColor,
+                drawBorder: false
+              },
+              ticks: {
+                color: textColor,
+                callback: (value) => value.toFixed(2)
+              },
+              beginAtZero: false
+            }
+          },
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const idx = elements[0].index;
+              const hours = this._chartHoursData || [];
+              if (hours[idx]) {
+                this._openModal(hours[idx].date, hours[idx].hour);
+              }
+            }
+          },
+          onHover: (event, elements) => {
+            const canvas = event.native?.target;
+            if (canvas) {
+              canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+            }
+          }
+        }
+      });
+
+      this._updateChart();
+    } catch (error) {
+      console.error('Failed to initialize Chart.js:', error);
+      const container = this.shadowRoot.querySelector('.chart-container');
+      if (container) {
+        container.innerHTML = '<div class="chart-loading">Failed to load chart</div>';
+      }
+    }
   }
 
   _getAvailableHours() {
@@ -708,157 +875,40 @@ class EnergySchedulerPanel extends HTMLElement {
   }
 
   _updateChart() {
-    if (!this._data || !this._chart) return;
+    if (!this._data || !this._chartInstance) return;
 
     const hours = this._getAvailableHours();
+    this._chartHoursData = hours;
 
-    this._chart.data.hours = hours;
-    this._drawChart();
-  }
+    // Generate labels
+    const labels = hours.map(h => {
+      const now = new Date();
+      const today = this._formatDate(now);
+      const tomorrow = this._formatDate(new Date(now.getTime() + 86400000));
 
-  _drawChart() {
-    if (!this._chart) return;
+      let dayPrefix = '';
+      if (h.date === today) dayPrefix = 'Today ';
+      else if (h.date === tomorrow) dayPrefix = 'Tomorrow ';
+      else dayPrefix = this._formatShortDate(h.date) + ' ';
 
-    const { canvas, ctx, data } = this._chart;
-    const hours = data.hours || [];
-
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-
-    // Skip if not visible yet
-    if (rect.width === 0 || rect.height === 0) {
-      // Retry after a short delay
-      setTimeout(() => this._drawChart(), 100);
-      return;
-    }
-
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    const width = rect.width;
-    const height = rect.height;
-    const padding = { top: 20, right: 20, bottom: 50, left: 50 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-
-    ctx.clearRect(0, 0, width, height);
-
-    if (hours.length === 0) {
-      ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
-      ctx.font = '14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('No price data available', width / 2, height / 2);
-      return;
-    }
-
-    // Find min/max values
-    const allValues = hours.flatMap(h => [h.buyPrice, h.sellPrice]).filter(v => v !== undefined);
-    const minValue = Math.min(...allValues) * 0.9;
-    const maxValue = Math.max(...allValues) * 1.1;
-    const valueRange = maxValue - minValue || 1;
-
-    // Draw grid
-    ctx.strokeStyle = getComputedStyle(this).getPropertyValue('--divider-color') || '#e0e0e0';
-    ctx.lineWidth = 0.5;
-
-    for (let i = 0; i <= 5; i++) {
-      const y = padding.top + (chartHeight / 5) * i;
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(width - padding.right, y);
-      ctx.stroke();
-
-      const value = maxValue - (valueRange / 5) * i;
-      ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(value.toFixed(2), padding.left - 8, y + 4);
-    }
-
-    const pointSpacing = chartWidth / (hours.length - 1 || 1);
-
-    // Draw lines
-    const drawLine = (getValue, color) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      let started = false;
-      hours.forEach((h, i) => {
-        const value = getValue(h);
-        if (value === undefined) return;
-
-        const x = padding.left + pointSpacing * i;
-        const y = padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
-
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-
-      ctx.stroke();
-
-      // Draw points
-      hours.forEach((h, i) => {
-        const value = getValue(h);
-        if (value === undefined) return;
-
-        const x = padding.left + pointSpacing * i;
-        const y = padding.top + chartHeight - ((value - minValue) / valueRange) * chartHeight;
-
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-      });
-    };
-
-    drawLine(h => h.buyPrice, '#2196F3');
-    drawLine(h => h.sellPrice, '#4CAF50');
-
-    // X-axis labels
-    ctx.fillStyle = getComputedStyle(this).getPropertyValue('--secondary-text-color') || '#888';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-
-    const labelInterval = Math.max(1, Math.floor(hours.length / 12));
-    hours.forEach((h, i) => {
-      if (i % labelInterval !== 0 && i !== hours.length - 1) return;
-
-      const x = padding.left + pointSpacing * i;
-      const label = `${this._formatHour(h.hour)}`;
-      const dateLabel = this._formatShortDate(h.date);
-
-      ctx.fillText(label, x, height - padding.bottom + 15);
-      ctx.fillText(dateLabel, x, height - padding.bottom + 28);
+      return dayPrefix + this._formatHour(h.hour);
     });
 
-    // Store click areas
-    this._chartClickAreas = hours.map((h, i) => ({
-      date: h.date,
-      hour: h.hour,
-      x: padding.left + pointSpacing * i - 15,
-      y: padding.top,
-      width: 30,
-      height: chartHeight
-    }));
+    // Update chart data
+    this._chartInstance.data.labels = labels;
+    this._chartInstance.data.datasets[0].data = hours.map(h => h.buyPrice);
+    this._chartInstance.data.datasets[1].data = hours.map(h => h.sellPrice);
 
-    canvas.onclick = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+    // Add scheduled indicators
+    const scheduledPoints = hours.map((h, idx) => {
+      const schedule = this._schedule[h.date]?.[h.hour.toString()];
+      return schedule ? 8 : 4; // Larger points for scheduled hours
+    });
 
-      for (const area of this._chartClickAreas) {
-        if (x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height) {
-          this._openModal(area.date, area.hour);
-          break;
-        }
-      }
-    };
+    this._chartInstance.data.datasets[0].pointRadius = scheduledPoints;
+    this._chartInstance.data.datasets[1].pointRadius = scheduledPoints;
+
+    this._chartInstance.update('none');
   }
 
   _updateScheduleList() {
