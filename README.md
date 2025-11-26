@@ -59,21 +59,45 @@ Before installing, ensure you have:
 
 ## Usage
 
-### Accessing the Panel
+### Option 1: Sidebar Panel
 
-After installation, a new **Energy Scheduler** item appears in the sidebar. Click it to open the scheduling interface.
+After installation, a new **Energy Scheduler** item appears in the sidebar. Click it to open the full scheduling interface.
+
+### Option 2: Lovelace Card
+
+You can also add the scheduler as a card on any dashboard:
+
+1. Go to **Settings** → **Dashboards** → **Resources**
+2. Add resource: `/api/energy_scheduler_pstryk/static/energy-scheduler-card.js` (type: JavaScript Module)
+3. Add card to your dashboard:
+
+```yaml
+type: custom:energy-scheduler-card
+title: Energy Scheduler
+show_chart: true
+show_schedule: true
+chart_height: 250
+```
+
+**Card Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `title` | Energy Scheduler | Card title |
+| `show_chart` | true | Show price chart |
+| `show_schedule` | true | Show hourly schedule grid |
+| `chart_height` | 250 | Chart height in pixels |
 
 ### Scheduling Actions
 
-1. **Navigate** to your desired date using the date picker or navigation arrows
-2. **View prices** on the chart - blue line for buy prices, green for sell prices
-3. **Click on any hour** (on the chart or in the grid below) to open the scheduling dialog
-4. **Select an action/mode** from the dropdown
-5. **Configure parameters** (if action is not the default mode):
+1. **View prices** on the chart - blue line for buy prices, green for sell prices
+2. **Click on any hour** (on the chart or in the grid below) to open the scheduling dialog
+3. **Select an action/mode** from the dropdown
+4. **Configure parameters** (if action is not the default mode):
    - **SOC Limit**: Action stops when battery reaches this percentage
    - **Full Hour**: Run for the entire hour
    - **Minutes**: Run for a specific number of minutes
-6. **Save** your schedule
+5. **Save** your schedule
 
 ### Understanding the Schedule Logic
 

@@ -160,6 +160,10 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     )
 
     _LOGGER.debug("Registered Energy Scheduler panel")
+    _LOGGER.info(
+        "Lovelace card available. Add to resources: %s/energy-scheduler-card.js",
+        STATIC_URL_PATH
+    )
 
 
 class PanelStaticView(HomeAssistantView):
@@ -176,7 +180,7 @@ class PanelStaticView(HomeAssistantView):
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Handle GET request for static files."""
         # Security: only allow specific files
-        allowed_files = {"panel.js"}
+        allowed_files = {"panel.js", "energy-scheduler-card.js"}
         if filename not in allowed_files:
             return web.Response(status=404)
 
