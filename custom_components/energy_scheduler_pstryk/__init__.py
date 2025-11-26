@@ -137,11 +137,16 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         _LOGGER.debug("Panel already registered, skipping")
         return
 
+    # Path to www folder inside custom_components
+    www_path = Path(__file__).parent / "www"
+
+    _LOGGER.debug("Panel static path: %s, exists: %s", www_path, www_path.exists())
+
     # Add static path for panel files
     await hass.http.async_register_static_paths([
         StaticPathConfig(
             url_path="/energy_scheduler_pstryk",
-            path=str(Path(__file__).parent.parent.parent / "www" / "energy_scheduler_pstryk"),
+            path=str(www_path),
             cache_headers=False,
         )
     ])
