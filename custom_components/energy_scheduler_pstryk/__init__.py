@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components import frontend
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -137,11 +138,13 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         return
 
     # Add static path for panel files
-    hass.http.register_static_path(
-        "/energy_scheduler_pstryk",
-        str(Path(__file__).parent.parent.parent / "www" / "energy_scheduler_pstryk"),
-        cache_headers=False,
-    )
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(
+            url_path="/energy_scheduler_pstryk",
+            path=str(Path(__file__).parent.parent.parent / "www" / "energy_scheduler_pstryk"),
+            cache_headers=False,
+        )
+    ])
 
     # Register the panel
     frontend.async_register_built_in_panel(
