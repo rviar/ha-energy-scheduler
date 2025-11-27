@@ -47,23 +47,27 @@ class EnergySchedulerCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._initialized) {
+    if (!this._initialized && this._config) {
       this._initialize();
-    } else {
+    } else if (this._initialized) {
       this._updateCurrentMode();
     }
   }
 
   setConfig(config) {
+    // Accept empty config {} as valid, only reject null/undefined
     this._config = {
-      title: config.title || 'Energy Scheduler',
-      show_chart: config.show_chart !== false,
-      show_schedule: config.show_schedule !== false,
-      chart_height: config.chart_height || 250,
-      ...config
+      title: config?.title || 'Energy Scheduler',
+      show_chart: config?.show_chart !== false,
+      show_schedule: config?.show_schedule !== false,
+      chart_height: config?.chart_height || 250,
+      ...(config || {})
     };
 
-    if (this._initialized) {
+    // Initialize if hass is already available
+    if (!this._initialized && this._hass) {
+      this._initialize();
+    } else if (this._initialized) {
       this._render();
     }
   }
