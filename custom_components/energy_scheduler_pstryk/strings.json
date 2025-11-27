@@ -9,22 +9,14 @@
           "price_sell_sensor": "Sell Price Sensor",
           "inverter_mode_entity": "Inverter Mode Entity",
           "soc_sensor": "SOC Sensor (optional)",
-          "ev_stop_condition_type": "EV Stop Condition Type",
-          "ev_stop_entity": "EV Stop Entity",
-          "ev_stop_state": "Target State",
-          "ev_stop_below": "Stop when below",
-          "ev_stop_above": "Stop when above"
+          "ev_stop_condition": "EV Stop Condition"
         },
         "data_description": {
           "price_buy_sensor": "Sensor providing buy energy prices with 'data' attribute",
           "price_sell_sensor": "Sensor providing sell energy prices with 'data' attribute",
           "inverter_mode_entity": "Input select entity controlling inverter modes",
           "soc_sensor": "Optional sensor providing battery state of charge",
-          "ev_stop_condition_type": "Type of condition to stop EV charging schedule",
-          "ev_stop_entity": "Entity to monitor for stop condition (any entity)",
-          "ev_stop_state": "Target state value to trigger stop (for 'State equals' type)",
-          "ev_stop_below": "Threshold value - stop when entity value is below this",
-          "ev_stop_above": "Threshold value - stop when entity value is above this"
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
         }
       },
       "default_mode": {
@@ -57,19 +49,11 @@
           "price_sell_sensor": "Sell Price Sensor",
           "inverter_mode_entity": "Inverter Mode Entity",
           "soc_sensor": "SOC Sensor (optional)",
-          "ev_stop_condition_type": "EV Stop Condition Type",
-          "ev_stop_entity": "EV Stop Entity",
-          "ev_stop_state": "Target State",
-          "ev_stop_below": "Stop when below",
-          "ev_stop_above": "Stop when above",
+          "ev_stop_condition": "EV Stop Condition",
           "default_mode": "Default Mode"
         },
         "data_description": {
-          "ev_stop_condition_type": "Type of condition to stop EV charging schedule",
-          "ev_stop_entity": "Entity to monitor for stop condition (any entity)",
-          "ev_stop_state": "Target state value to trigger stop (for 'State equals' type)",
-          "ev_stop_below": "Threshold value - stop when entity value is below this",
-          "ev_stop_above": "Threshold value - stop when entity value is above this"
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
         }
       }
     },

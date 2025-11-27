@@ -1077,9 +1077,9 @@ class EnergySchedulerCard extends HTMLElement {
   _toggleParameterFields(action) {
     const defaultMode = this._data?.default_mode || '';
     const isNonDefault = action && action !== defaultMode && action !== '';
-    const hasEvStopCondition = this._integrationConfig?.ev_stop_condition_type &&
-                                this._integrationConfig?.ev_stop_condition_type !== 'none' &&
-                                !!this._integrationConfig?.ev_stop_entity;
+    const hasEvStopCondition = this._integrationConfig?.ev_stop_condition &&
+                                Array.isArray(this._integrationConfig.ev_stop_condition) &&
+                                this._integrationConfig.ev_stop_condition.length > 0;
     const hasSocSensor = !!this._integrationConfig?.soc_sensor;
 
     const socGroup = this.shadowRoot.getElementById('socLimitGroup');
@@ -1124,9 +1124,9 @@ class EnergySchedulerCard extends HTMLElement {
     let evCharging = false;
 
     if (action !== defaultMode) {
-      const hasEvStopCondition = this._integrationConfig?.ev_stop_condition_type &&
-                                  this._integrationConfig?.ev_stop_condition_type !== 'none' &&
-                                  !!this._integrationConfig?.ev_stop_entity;
+      const hasEvStopCondition = this._integrationConfig?.ev_stop_condition &&
+                                  Array.isArray(this._integrationConfig.ev_stop_condition) &&
+                                  this._integrationConfig.ev_stop_condition.length > 0;
       if (hasEvStopCondition) {
         evCharging = this.shadowRoot.getElementById('evCharging').checked;
       }

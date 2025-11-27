@@ -13,11 +13,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_DEFAULT_MODE,
-    CONF_EV_STOP_ABOVE,
-    CONF_EV_STOP_BELOW,
-    CONF_EV_STOP_CONDITION_TYPE,
-    CONF_EV_STOP_ENTITY,
-    CONF_EV_STOP_STATE,
+    CONF_EV_STOP_CONDITION,
     CONF_INVERTER_MODE_ENTITY,
     CONF_PRICE_BUY_SENSOR,
     CONF_PRICE_SELL_SENSOR,
@@ -27,11 +23,6 @@ from .const import (
     DEFAULT_PRICE_SELL_SENSOR,
     DOMAIN,
     NAME,
-    STOP_CONDITION_NONE,
-    STOP_CONDITION_NUMERIC_ABOVE,
-    STOP_CONDITION_NUMERIC_BELOW,
-    STOP_CONDITION_STATE,
-    STOP_CONDITION_TYPES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,43 +114,7 @@ class EnergySchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_SOC_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(
-                    CONF_EV_STOP_CONDITION_TYPE,
-                    default=STOP_CONDITION_NONE,
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value=STOP_CONDITION_NONE, label="None (disabled)"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_STATE, label="State equals"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_NUMERIC_BELOW, label="Value below threshold"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_NUMERIC_ABOVE, label="Value above threshold"),
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                        translation_key="ev_stop_condition_type",
-                    )
-                ),
-                vol.Optional(CONF_EV_STOP_ENTITY): selector.EntitySelector(
-                    selector.EntitySelectorConfig()
-                ),
-                vol.Optional(CONF_EV_STOP_STATE): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                ),
-                vol.Optional(CONF_EV_STOP_BELOW): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=-1000000,
-                        max=1000000,
-                        step=0.1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Optional(CONF_EV_STOP_ABOVE): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=-1000000,
-                        max=1000000,
-                        step=0.1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
+                vol.Optional(CONF_EV_STOP_CONDITION): selector.ConditionSelector(),
             }
         )
 
@@ -285,54 +240,9 @@ class EnergySchedulerOptionsFlow(config_entries.OptionsFlow):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(
-                    CONF_EV_STOP_CONDITION_TYPE,
-                    default=current_config.get(CONF_EV_STOP_CONDITION_TYPE, STOP_CONDITION_NONE),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value=STOP_CONDITION_NONE, label="None (disabled)"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_STATE, label="State equals"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_NUMERIC_BELOW, label="Value below threshold"),
-                            selector.SelectOptionDict(value=STOP_CONDITION_NUMERIC_ABOVE, label="Value above threshold"),
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                        translation_key="ev_stop_condition_type",
-                    )
-                ),
-                vol.Optional(
-                    CONF_EV_STOP_ENTITY,
-                    default=current_config.get(CONF_EV_STOP_ENTITY),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig()
-                ),
-                vol.Optional(
-                    CONF_EV_STOP_STATE,
-                    default=current_config.get(CONF_EV_STOP_STATE),
-                ): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                ),
-                vol.Optional(
-                    CONF_EV_STOP_BELOW,
-                    default=current_config.get(CONF_EV_STOP_BELOW),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=-1000000,
-                        max=1000000,
-                        step=0.1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Optional(
-                    CONF_EV_STOP_ABOVE,
-                    default=current_config.get(CONF_EV_STOP_ABOVE),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=-1000000,
-                        max=1000000,
-                        step=0.1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
+                    CONF_EV_STOP_CONDITION,
+                    default=current_config.get(CONF_EV_STOP_CONDITION),
+                ): selector.ConditionSelector(),
                 vol.Required(
                     CONF_DEFAULT_MODE,
                     default=current_config.get(CONF_DEFAULT_MODE, ""),

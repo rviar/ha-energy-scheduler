@@ -11,25 +11,8 @@ CONF_PRICE_SELL_SENSOR: Final = "price_sell_sensor"
 CONF_INVERTER_MODE_ENTITY: Final = "inverter_mode_entity"
 CONF_DEFAULT_MODE: Final = "default_mode"
 CONF_SOC_SENSOR: Final = "soc_sensor"
-# EV/Stop condition configuration
-CONF_EV_STOP_CONDITION_TYPE: Final = "ev_stop_condition_type"
-CONF_EV_STOP_ENTITY: Final = "ev_stop_entity"
-CONF_EV_STOP_STATE: Final = "ev_stop_state"
-CONF_EV_STOP_BELOW: Final = "ev_stop_below"
-CONF_EV_STOP_ABOVE: Final = "ev_stop_above"
-
-# Stop condition types
-STOP_CONDITION_NONE: Final = "none"
-STOP_CONDITION_STATE: Final = "state"
-STOP_CONDITION_NUMERIC_BELOW: Final = "numeric_below"
-STOP_CONDITION_NUMERIC_ABOVE: Final = "numeric_above"
-
-STOP_CONDITION_TYPES: Final = [
-    STOP_CONDITION_NONE,
-    STOP_CONDITION_STATE,
-    STOP_CONDITION_NUMERIC_BELOW,
-    STOP_CONDITION_NUMERIC_ABOVE,
-]
+# EV/Stop condition configuration (uses HA native conditions)
+CONF_EV_STOP_CONDITION: Final = "ev_stop_condition"
 
 # Default sensor entities
 DEFAULT_PRICE_BUY_SENSOR: Final = "sensor.energy_price_buy"
