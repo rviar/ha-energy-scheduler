@@ -244,6 +244,53 @@ class EnergySchedulerCard extends HTMLElement {
         color: var(--primary-text-color);
       }
 
+      .header-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .optimize-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .optimize-btn:hover {
+        opacity: 0.85;
+        transform: translateY(-1px);
+      }
+
+      .optimize-btn:active {
+        transform: translateY(0);
+      }
+
+      .optimize-btn.loading {
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      .optimize-btn .spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid transparent;
+        border-top-color: currentColor;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
       .chart-section {
         margin-bottom: 16px;
       }
@@ -661,6 +708,12 @@ class EnergySchedulerCard extends HTMLElement {
     return `
       <div class="card-header">
         <h2>⚡ ${this._config?.title || 'Energy Scheduler'}</h2>
+        <div class="header-actions">
+          <button class="optimize-btn" id="optimizeBtn" title="Run optimization">
+            <span class="icon">🔄</span>
+            <span class="text">Optimize</span>
+          </button>
+        </div>
       </div>
 
       ${this._config?.show_chart ? `
@@ -777,6 +830,12 @@ class EnergySchedulerCard extends HTMLElement {
 
   _setupEventListeners() {
     const root = this.shadowRoot;
+
+    // Optimize button
+    const optimizeBtn = root.getElementById('optimizeBtn');
+    if (optimizeBtn) {
+      optimizeBtn.addEventListener('click', () => this._runOptimization());
+    }
 
     const modalClose = root.getElementById('modalClose');
     const modalCancel = root.getElementById('modalCancel');
@@ -1345,6 +1404,40 @@ class EnergySchedulerCard extends HTMLElement {
     setTimeout(() => {
       notification.classList.remove('show');
     }, 2500);
+  }
+
+  async _runOptimization() {
+    const btn = this.shadowRoot.getElementById('optimizeBtn');
+    if (!btn || btn.classList.contains('loading')) return;
+
+    // Set loading state
+    btn.classList.add('loading');
+    const iconSpan = btn.querySelector('.icon');
+    const textSpan = btn.querySelector('.text');
+    const originalIcon = iconSpan.textContent;
+    const originalText = textSpan.textContent;
+
+    iconSpan.innerHTML = '<div class="spinner"></div>';
+    textSpan.textContent = 'Running...';
+
+    try {
+      await this._hass.callService('hacs_energy_scheduler', 'run_optimization', {
+        hours_ahead: 24
+      });
+
+      this._showNotification('Optimization complete!');
+
+      // Reload data to show new schedule
+      await this._loadData();
+    } catch (error) {
+      console.error('Optimization failed:', error);
+      this._showNotification('Optimization failed', 'error');
+    } finally {
+      // Reset button state
+      btn.classList.remove('loading');
+      iconSpan.textContent = originalIcon;
+      textSpan.textContent = originalText;
+    }
   }
 }
 

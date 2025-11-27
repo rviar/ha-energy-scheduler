@@ -13,15 +13,22 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers import condition
 
 from .const import (
+    ACTION_CHARGE,
+    CONF_AUTO_OPTIMIZE,
     CONF_DEFAULT_MODE,
     CONF_EV_STOP_CONDITION,
     CONF_INVERTER_MODE_ENTITY,
+    CONF_OPTIMIZE_INTERVAL,
     CONF_PRICE_BUY_SENSOR,
     CONF_PRICE_SELL_SENSOR,
     CONF_SOC_SENSOR,
     DOMAIN,
+    OPTIMIZE_INTERVAL_DAILY,
+    OPTIMIZE_INTERVAL_EVERY_6H,
+    OPTIMIZE_INTERVAL_HOURLY,
     SCHEDULER_INTERVAL,
 )
+from .optimizer import EnergyOptimizer, OptimizationResult
 from .storage_manager import ScheduleStorageManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,6 +55,16 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         self._current_action: str | None = None
         self._action_start_time: datetime | None = None
         self._unsub_interval: Any = None
+        self._unsub_optimize_interval: Any = None
+        self._last_optimization: datetime | None = None
+        self._last_optimization_result: OptimizationResult | None = None
+
+        # Initialize optimizer
+        self._optimizer = EnergyOptimizer(
+            hass,
+            config,
+            self._get_price_data_for_optimizer,
+        )
 
     @property
     def storage(self) -> ScheduleStorageManager:
@@ -89,6 +106,26 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         """Return the EV stop condition configuration."""
         return self._config.get(CONF_EV_STOP_CONDITION)
 
+    @property
+    def optimizer(self) -> EnergyOptimizer:
+        """Return the optimizer instance."""
+        return self._optimizer
+
+    @property
+    def last_optimization_result(self) -> OptimizationResult | None:
+        """Return the last optimization result."""
+        return self._last_optimization_result
+
+    @property
+    def auto_optimize(self) -> bool:
+        """Return if auto-optimization is enabled."""
+        return self._config.get(CONF_AUTO_OPTIMIZE, False)
+
+    @property
+    def optimize_interval(self) -> str:
+        """Return the optimization interval."""
+        return self._config.get(CONF_OPTIMIZE_INTERVAL, "manual")
+
     def _is_ev_stop_condition_configured(self) -> bool:
         """Check if EV stop condition is properly configured."""
         cond = self.ev_stop_condition
@@ -106,10 +143,57 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             timedelta(seconds=SCHEDULER_INTERVAL),
         )
 
+        # Start auto-optimization if enabled
+        await self._async_setup_auto_optimization()
+
     async def async_shutdown(self) -> None:
         """Shut down the coordinator."""
         if self._unsub_interval:
             self._unsub_interval()
+        if self._unsub_optimize_interval:
+            self._unsub_optimize_interval()
+
+    async def _async_setup_auto_optimization(self) -> None:
+        """Set up automatic optimization based on interval setting."""
+        if self._unsub_optimize_interval:
+            self._unsub_optimize_interval()
+            self._unsub_optimize_interval = None
+
+        if not self.auto_optimize:
+            _LOGGER.debug("Auto-optimization disabled")
+            return
+
+        interval = self.optimize_interval
+        if interval == OPTIMIZE_INTERVAL_HOURLY:
+            delta = timedelta(hours=1)
+        elif interval == OPTIMIZE_INTERVAL_EVERY_6H:
+            delta = timedelta(hours=6)
+        elif interval == OPTIMIZE_INTERVAL_DAILY:
+            delta = timedelta(hours=24)
+        else:
+            _LOGGER.debug("Manual optimization mode, no auto-schedule")
+            return
+
+        self._unsub_optimize_interval = async_track_time_interval(
+            self.hass,
+            self._async_run_scheduled_optimization,
+            delta,
+        )
+        _LOGGER.info("Auto-optimization enabled with interval: %s", interval)
+
+    async def _async_run_scheduled_optimization(self, now: datetime) -> None:
+        """Run scheduled optimization."""
+        _LOGGER.info("Running scheduled optimization at %s", now)
+        await self.async_run_optimization(hours_ahead=24)
+
+    def _get_price_data_for_optimizer(self) -> dict[str, Any]:
+        """Get price data for the optimizer."""
+        buy_data = self._get_sensor_price_data(self.price_buy_sensor)
+        sell_data = self._get_sensor_price_data(self.price_sell_sensor)
+        return {
+            "buy_prices": buy_data,
+            "sell_prices": sell_data,
+        }
 
     async def _async_fetch_data(self) -> dict[str, Any]:
         """Fetch price data from sensors."""
@@ -258,8 +342,15 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                             current_minute, minutes
                         )
 
-            if should_apply and self._current_action != action:
-                await self._async_apply_mode(action)
+            if should_apply:
+                # Resolve ACTION_CHARGE to actual mode dynamically
+                resolved_action = action
+                if action == ACTION_CHARGE:
+                    resolved_action = self._optimizer.select_charge_mode()
+                    _LOGGER.debug("Resolved ACTION_CHARGE to mode: %s", resolved_action)
+
+                if self._current_action != resolved_action:
+                    await self._async_apply_mode(resolved_action)
             elif should_revert and self._current_action != self.default_mode:
                 await self._async_apply_default_mode()
 
@@ -377,3 +468,135 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
     async def async_apply_mode_now(self, mode: str) -> None:
         """Manually apply a mode immediately."""
         await self._async_apply_mode(mode)
+
+    async def async_run_optimization(
+        self, hours_ahead: int = 24, apply_schedule: bool = True
+    ) -> OptimizationResult:
+        """Run the energy optimization algorithm.
+
+        Args:
+            hours_ahead: Planning horizon in hours (12-48)
+            apply_schedule: Whether to apply the optimization result to schedule
+
+        Returns:
+            OptimizationResult with schedule recommendations
+        """
+        hours_ahead = max(12, min(48, hours_ahead))
+
+        _LOGGER.info("Running optimization for %d hours ahead", hours_ahead)
+
+        # Run optimization in executor to avoid blocking
+        result = await self.hass.async_add_executor_job(
+            self._optimizer.optimize, hours_ahead
+        )
+
+        self._last_optimization = dt_util.now()
+        self._last_optimization_result = result
+
+        _LOGGER.info(
+            "Optimization result: %d charge hours, %d discharge hours, %d solar hours",
+            len(result.charge_hours),
+            len(result.discharge_hours),
+            len(result.solar_hours),
+        )
+
+        if result.warnings:
+            for warning in result.warnings:
+                _LOGGER.warning("Optimization warning: %s", warning)
+
+        if result.emergency_charge:
+            _LOGGER.warning("Emergency charge: %s", result.emergency_reason)
+
+        if result.ev_urgent_charge:
+            _LOGGER.warning("EV urgent charge: %s", result.ev_urgent_reason)
+
+        # Apply schedule if requested
+        if apply_schedule:
+            await self._async_apply_optimization_result(result)
+
+        await self.async_request_refresh()
+
+        return result
+
+    async def _async_apply_optimization_result(
+        self, result: OptimizationResult
+    ) -> None:
+        """Apply optimization result to the schedule.
+
+        Uses ACTION_CHARGE for charge hours to enable dynamic mode selection.
+        """
+        # Clear future schedule first
+        now = dt_util.now()
+        current_date = now.strftime("%Y-%m-%d")
+        tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # Clear both today and tomorrow schedules
+        await self._storage.async_clear_date_schedule(current_date)
+        await self._storage.async_clear_date_schedule(tomorrow)
+
+        # Apply charge hours with ACTION_CHARGE (dynamic mode selection)
+        for hour_data in result.charge_hours:
+            date = hour_data.get("date")
+            hour = str(hour_data.get("hour"))
+
+            # Determine if this is EV charging
+            ev_charging = self._optimizer.ev_enabled and self._optimizer._is_ev_connected()
+
+            await self._storage.async_set_hour_schedule(
+                date=date,
+                hour=hour,
+                action=ACTION_CHARGE,  # Will be resolved dynamically
+                soc_limit=100 if not ev_charging else None,
+                soc_limit_type="max",
+                full_hour=True,
+                minutes=None,
+                ev_charging=ev_charging,
+            )
+
+        # Apply discharge hours with sell mode
+        sell_mode = self._optimizer.mode_sell
+        if sell_mode:
+            for hour_data in result.discharge_hours:
+                date = hour_data.get("date")
+                hour = str(hour_data.get("hour"))
+
+                await self._storage.async_set_hour_schedule(
+                    date=date,
+                    hour=hour,
+                    action=sell_mode,
+                    soc_limit=self._optimizer.battery_min_soc,
+                    soc_limit_type="min",
+                    full_hour=True,
+                    minutes=None,
+                    ev_charging=False,
+                )
+
+        # Apply solar-only hours
+        solar_mode = self._optimizer.mode_sell_solar_only
+        if solar_mode:
+            for hour_data in result.solar_hours:
+                date = hour_data.get("date")
+                hour = str(hour_data.get("hour"))
+
+                # Skip if already scheduled as charge or discharge
+                existing = self._storage.get_hour_schedule(date, hour)
+                if existing:
+                    continue
+
+                await self._storage.async_set_hour_schedule(
+                    date=date,
+                    hour=hour,
+                    action=solar_mode,
+                    soc_limit=None,
+                    soc_limit_type=None,
+                    full_hour=True,
+                    minutes=None,
+                    ev_charging=False,
+                )
+
+        _LOGGER.info(
+            "Applied optimization schedule: %d charge, %d discharge, %d solar hours",
+            len(result.charge_hours),
+            len(result.discharge_hours),
+            len(result.solar_hours),
+        )

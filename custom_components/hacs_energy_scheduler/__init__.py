@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
+    SERVICE_RUN_OPTIMIZATION,
     SERVICE_SET_SCHEDULE,
 )
 from .coordinator import EnergySchedulerCoordinator
@@ -62,6 +63,14 @@ CLEAR_SCHEDULE_SCHEMA = vol.Schema(
 APPLY_MODE_SCHEMA = vol.Schema(
     {
         vol.Required("mode"): cv.string,
+    }
+)
+
+RUN_OPTIMIZATION_SCHEMA = vol.Schema(
+    {
+        vol.Optional("hours_ahead", default=24): vol.All(
+            vol.Coerce(int), vol.Range(min=12, max=48)
+        ),
     }
 )
 
@@ -221,6 +230,17 @@ async def _async_register_services(
         mode = call.data["mode"]
         await coordinator.async_apply_mode_now(mode)
 
+    async def handle_run_optimization(call: ServiceCall) -> None:
+        """Handle the run_optimization service call."""
+        hours_ahead = call.data.get("hours_ahead", 24)
+        result = await coordinator.async_run_optimization(hours_ahead=hours_ahead)
+        _LOGGER.info(
+            "Optimization completed: %d charge, %d discharge, %d solar hours",
+            len(result.charge_hours),
+            len(result.discharge_hours),
+            len(result.solar_hours),
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SET_SCHEDULE, handle_set_schedule, schema=SET_SCHEDULE_SCHEMA
     )
@@ -229,6 +249,9 @@ async def _async_register_services(
     )
     hass.services.async_register(
         DOMAIN, SERVICE_APPLY_MODE, handle_apply_mode, schema=APPLY_MODE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_RUN_OPTIMIZATION, handle_run_optimization, schema=RUN_OPTIMIZATION_SCHEMA
     )
 
     _LOGGER.debug("Registered Energy Scheduler services")

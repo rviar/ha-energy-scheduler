@@ -16,7 +16,7 @@
           "price_sell_sensor": "Sensor providing sell energy prices with 'data' attribute",
           "inverter_mode_entity": "Input select entity controlling inverter modes",
           "soc_sensor": "Optional sensor providing battery state of charge",
-          "ev_stop_condition": "Condition to trigger stop for EV charging schedules"
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
         }
       },
       "default_mode": {
@@ -43,7 +43,19 @@
     "step": {
       "init": {
         "title": "Energy Scheduler Options",
-        "description": "Update the energy scheduler configuration.",
+        "description": "Select a category to configure.",
+        "menu_options": {
+          "basic": "Basic Settings",
+          "battery": "Battery Optimizer",
+          "forecast": "PV Forecast & Consumption",
+          "ev": "Electric Vehicle (EV)",
+          "modes": "Inverter Mode Mapping",
+          "automation": "Automation"
+        }
+      },
+      "basic": {
+        "title": "Basic Settings",
+        "description": "Configure price sensors and inverter entity.",
         "data": {
           "price_buy_sensor": "Buy Price Sensor",
           "price_sell_sensor": "Sell Price Sensor",
@@ -53,7 +65,97 @@
           "default_mode": "Default Mode"
         },
         "data_description": {
-          "ev_stop_condition": "Condition to trigger stop for EV charging schedules"
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
+        }
+      },
+      "battery": {
+        "title": "Battery Optimizer Settings",
+        "description": "Configure battery parameters for the energy optimizer.",
+        "data": {
+          "battery_soc_sensor": "Battery SOC Sensor",
+          "battery_capacity": "Battery Capacity",
+          "battery_min_soc": "Minimum SOC Reserve",
+          "battery_max_charge_power": "Max Charge Power",
+          "battery_max_discharge_power": "Max Discharge Power",
+          "battery_cost": "Battery Cost",
+          "battery_cycles": "Battery Cycle Count"
+        },
+        "data_description": {
+          "battery_soc_sensor": "Sensor providing battery state of charge (%)",
+          "battery_capacity": "Total battery capacity in kWh",
+          "battery_min_soc": "Never discharge below this SOC level",
+          "battery_max_charge_power": "Maximum charging power from grid",
+          "battery_max_discharge_power": "Maximum discharging power to grid",
+          "battery_cost": "Purchase cost of the battery (for cycle cost calculation)",
+          "battery_cycles": "Expected total battery cycles (for wear calculation)"
+        }
+      },
+      "forecast": {
+        "title": "PV Forecast & Consumption",
+        "description": "Configure solar forecast and consumption settings.",
+        "data": {
+          "pv_forecast_sensor": "PV Forecast Sensor",
+          "avg_consumption": "Average Consumption",
+          "max_grid_power": "Max Grid Power"
+        },
+        "data_description": {
+          "pv_forecast_sensor": "Solcast or Forecast.Solar sensor for PV production forecast",
+          "avg_consumption": "Average hourly power consumption of your home",
+          "max_grid_power": "Maximum power available from the grid (limits concurrent charging)"
+        }
+      },
+      "ev": {
+        "title": "Electric Vehicle Settings",
+        "description": "Configure EV charging parameters (optional).",
+        "data": {
+          "ev_enabled": "Enable EV Support",
+          "ev_soc_sensor": "EV SOC Sensor",
+          "ev_battery_capacity": "EV Battery Capacity",
+          "ev_max_charge_power": "EV Max Charge Power",
+          "ev_target_soc": "EV Target SOC",
+          "ev_connected_sensor": "EV Connected Sensor",
+          "ev_ready_by": "EV Ready By Time"
+        },
+        "data_description": {
+          "ev_enabled": "Enable electric vehicle charging optimization",
+          "ev_soc_sensor": "Sensor providing EV state of charge (%)",
+          "ev_battery_capacity": "Total EV battery capacity",
+          "ev_max_charge_power": "Maximum EV charging power",
+          "ev_target_soc": "Target SOC to charge EV to",
+          "ev_connected_sensor": "Sensor indicating if EV is connected/plugged in",
+          "ev_ready_by": "Time by which EV should be charged (optional)"
+        }
+      },
+      "modes": {
+        "title": "Inverter Mode Mapping",
+        "description": "Map optimizer actions to your inverter modes.",
+        "data": {
+          "mode_charge_battery": "Charge Battery Mode",
+          "mode_charge_ev": "Charge EV Mode",
+          "mode_charge_ev_and_battery": "Charge EV + Battery Mode",
+          "mode_sell": "Sell/Discharge Mode",
+          "mode_sell_solar_only": "Sell Solar Only Mode",
+          "mode_grid_only": "Grid Only Mode"
+        },
+        "data_description": {
+          "mode_charge_battery": "Mode for charging battery from grid",
+          "mode_charge_ev": "Mode for charging EV only",
+          "mode_charge_ev_and_battery": "Mode for charging both EV and battery",
+          "mode_sell": "Mode for selling/discharging battery to grid",
+          "mode_sell_solar_only": "Mode for selling only solar production",
+          "mode_grid_only": "Mode to use grid only (don't discharge battery)"
+        }
+      },
+      "automation": {
+        "title": "Automation Settings",
+        "description": "Configure automatic optimization schedule.",
+        "data": {
+          "auto_optimize": "Enable Auto-Optimization",
+          "optimize_interval": "Optimization Interval"
+        },
+        "data_description": {
+          "auto_optimize": "Automatically run optimization based on interval",
+          "optimize_interval": "How often to run the optimization algorithm"
         }
       }
     },
@@ -113,6 +215,16 @@
         "mode": {
           "name": "Mode",
           "description": "The mode to apply immediately"
+        }
+      }
+    },
+    "run_optimization": {
+      "name": "Run Optimization",
+      "description": "Analyze prices and PV forecast to create an optimal schedule",
+      "fields": {
+        "hours_ahead": {
+          "name": "Planning Horizon",
+          "description": "Number of hours to plan ahead (12-48)"
         }
       }
     }
