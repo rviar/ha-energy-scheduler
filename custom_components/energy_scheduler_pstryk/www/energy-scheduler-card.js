@@ -595,7 +595,7 @@ class EnergySchedulerCard extends HTMLElement {
           <div class="form-group" id="evChargingGroup" style="display: none;">
             <div class="checkbox-group">
               <input type="checkbox" id="evCharging">
-              <label for="evCharging">🚗 EV Charging (auto-stop when complete)</label>
+              <label for="evCharging">🚗 EV Mode (auto-stop by condition)</label>
             </div>
           </div>
 
@@ -1077,7 +1077,9 @@ class EnergySchedulerCard extends HTMLElement {
   _toggleParameterFields(action) {
     const defaultMode = this._data?.default_mode || '';
     const isNonDefault = action && action !== defaultMode && action !== '';
-    const hasEvSensor = !!this._integrationConfig?.ev_sensor;
+    const hasEvStopCondition = this._integrationConfig?.ev_stop_condition_type &&
+                                this._integrationConfig?.ev_stop_condition_type !== 'none' &&
+                                !!this._integrationConfig?.ev_stop_entity;
     const hasSocSensor = !!this._integrationConfig?.soc_sensor;
 
     const socGroup = this.shadowRoot.getElementById('socLimitGroup');
@@ -1086,9 +1088,9 @@ class EnergySchedulerCard extends HTMLElement {
     const minutesGroup = this.shadowRoot.getElementById('minutesGroup');
     const evChargingGroup = this.shadowRoot.getElementById('evChargingGroup');
 
-    // Show EV charging option only if EV sensor is configured and action is non-default
+    // Show EV charging option only if EV stop condition is configured and action is non-default
     if (evChargingGroup) {
-      evChargingGroup.style.display = isNonDefault && hasEvSensor ? 'block' : 'none';
+      evChargingGroup.style.display = isNonDefault && hasEvStopCondition ? 'block' : 'none';
     }
 
     // Check if EV charging is selected to hide SOC limit
@@ -1122,8 +1124,13 @@ class EnergySchedulerCard extends HTMLElement {
     let evCharging = false;
 
     if (action !== defaultMode) {
-      evCharging = this.shadowRoot.getElementById('evCharging').checked;
-      // Only set SOC limit if not using EV charging (EV uses its own sensor)
+      const hasEvStopCondition = this._integrationConfig?.ev_stop_condition_type &&
+                                  this._integrationConfig?.ev_stop_condition_type !== 'none' &&
+                                  !!this._integrationConfig?.ev_stop_entity;
+      if (hasEvStopCondition) {
+        evCharging = this.shadowRoot.getElementById('evCharging').checked;
+      }
+      // Only set SOC limit if not using EV charging (EV uses its own stop condition)
       if (!evCharging && this._integrationConfig?.soc_sensor) {
         socLimit = parseInt(this.shadowRoot.getElementById('socLimit').value);
         socLimitType = this.shadowRoot.getElementById('socLimitType').value;

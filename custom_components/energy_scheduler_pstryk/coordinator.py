@@ -12,14 +12,21 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DEFAULT_MODE,
-    CONF_EV_SENSOR,
-    CONF_EV_TRIGGER_BELOW,
+    CONF_EV_STOP_ABOVE,
+    CONF_EV_STOP_BELOW,
+    CONF_EV_STOP_CONDITION_TYPE,
+    CONF_EV_STOP_ENTITY,
+    CONF_EV_STOP_STATE,
     CONF_INVERTER_MODE_ENTITY,
     CONF_PRICE_BUY_SENSOR,
     CONF_PRICE_SELL_SENSOR,
     CONF_SOC_SENSOR,
     DOMAIN,
     SCHEDULER_INTERVAL,
+    STOP_CONDITION_NONE,
+    STOP_CONDITION_NUMERIC_ABOVE,
+    STOP_CONDITION_NUMERIC_BELOW,
+    STOP_CONDITION_STATE,
 )
 from .storage_manager import ScheduleStorageManager
 
@@ -84,14 +91,37 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         return self._config.get(CONF_SOC_SENSOR)
 
     @property
-    def ev_sensor(self) -> str | None:
-        """Return the EV charging sensor entity ID."""
-        return self._config.get(CONF_EV_SENSOR)
+    def ev_stop_condition_type(self) -> str:
+        """Return the EV stop condition type."""
+        return self._config.get(CONF_EV_STOP_CONDITION_TYPE, STOP_CONDITION_NONE)
 
     @property
-    def ev_trigger_below(self) -> float:
-        """Return the EV trigger threshold (revert when sensor value below this)."""
-        return self._config.get(CONF_EV_TRIGGER_BELOW, 1.0)
+    def ev_stop_entity(self) -> str | None:
+        """Return the EV stop condition entity ID."""
+        return self._config.get(CONF_EV_STOP_ENTITY)
+
+    @property
+    def ev_stop_state(self) -> str | None:
+        """Return the EV stop condition target state."""
+        return self._config.get(CONF_EV_STOP_STATE)
+
+    @property
+    def ev_stop_below(self) -> float | None:
+        """Return the EV stop condition 'below' threshold."""
+        return self._config.get(CONF_EV_STOP_BELOW)
+
+    @property
+    def ev_stop_above(self) -> float | None:
+        """Return the EV stop condition 'above' threshold."""
+        return self._config.get(CONF_EV_STOP_ABOVE)
+
+    def _is_ev_stop_condition_configured(self) -> bool:
+        """Check if EV stop condition is properly configured."""
+        if self.ev_stop_condition_type == STOP_CONDITION_NONE:
+            return False
+        if not self.ev_stop_entity:
+            return False
+        return True
 
     async def async_setup(self) -> None:
         """Set up the coordinator."""
@@ -209,16 +239,16 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             should_apply = True
             should_revert = False
 
-            # Check EV charging completion if specified
-            if ev_charging and self.ev_sensor:
-                ev_value = self._get_ev_sensor_value()
-                if ev_value is not None and ev_value < self.ev_trigger_below:
+            # Check EV stop condition if specified
+            if ev_charging and self._is_ev_stop_condition_configured():
+                stop_condition_met, reason = self._check_ev_stop_condition()
+                if stop_condition_met:
                     should_apply = False
                     should_revert = self._current_action == action
                     if should_revert:
                         _LOGGER.info(
-                            "EV charging complete (%.2f < %.2f), reverting to default mode",
-                            ev_value, self.ev_trigger_below
+                            "EV stop condition met (%s), reverting to default mode",
+                            reason
                         )
 
             # Check SOC limit if specified (only if not EV charging mode)
@@ -288,19 +318,53 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             return None
 
-    def _get_ev_sensor_value(self) -> float | None:
-        """Get current EV sensor value (e.g., charging current)."""
-        if not self.ev_sensor:
-            return None
+    def _check_ev_stop_condition(self) -> tuple[bool, str]:
+        """Check if EV stop condition is met.
 
-        state = self.hass.states.get(self.ev_sensor)
-        if state is None:
-            return None
+        Returns:
+            Tuple of (condition_met, reason_string)
+        """
+        if not self._is_ev_stop_condition_configured():
+            return False, ""
 
+        entity_state = self.hass.states.get(self.ev_stop_entity)
+        if entity_state is None:
+            _LOGGER.warning("EV stop entity %s not found", self.ev_stop_entity)
+            return False, ""
+
+        current_state = entity_state.state
+        condition_type = self.ev_stop_condition_type
+
+        # State comparison
+        if condition_type == STOP_CONDITION_STATE:
+            target_state = self.ev_stop_state
+            if target_state and current_state == target_state:
+                return True, f"state '{current_state}' == '{target_state}'"
+            return False, ""
+
+        # Numeric comparisons
         try:
-            return float(state.state)
+            current_value = float(current_state)
         except (ValueError, TypeError):
-            return None
+            _LOGGER.warning(
+                "Cannot convert EV stop entity %s state '%s' to number",
+                self.ev_stop_entity, current_state
+            )
+            return False, ""
+
+        if condition_type == STOP_CONDITION_NUMERIC_BELOW:
+            threshold = self.ev_stop_below
+            if threshold is not None and current_value < threshold:
+                return True, f"value {current_value:.2f} < {threshold:.2f}"
+            return False, ""
+
+        if condition_type == STOP_CONDITION_NUMERIC_ABOVE:
+            threshold = self.ev_stop_above
+            if threshold is not None and current_value > threshold:
+                return True, f"value {current_value:.2f} > {threshold:.2f}"
+            return False, ""
+
+        return False, ""
 
     async def _async_apply_mode(self, mode: str) -> None:
         """Apply the specified inverter mode."""
