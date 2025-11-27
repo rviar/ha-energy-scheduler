@@ -170,7 +170,12 @@ class CardStaticView(HomeAssistantView):
             return web.Response(status=404)
 
         try:
-            content = file_path.read_text(encoding="utf-8")
+            # Use executor to avoid blocking the event loop
+            def read_file():
+                return file_path.read_text(encoding="utf-8")
+
+            hass = request.app["hass"]
+            content = await hass.async_add_executor_job(read_file)
             return web.Response(
                 text=content,
                 content_type="application/javascript",
