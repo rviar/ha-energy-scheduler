@@ -244,11 +244,6 @@ class EnergySchedulerCard extends HTMLElement {
         color: var(--primary-text-color);
       }
 
-      .header-info {
-        font-size: 12px;
-        color: var(--secondary-text-color);
-      }
-
       .chart-section {
         margin-bottom: 16px;
       }
@@ -433,43 +428,161 @@ class EnergySchedulerCard extends HTMLElement {
       }
 
       .form-group {
-        margin-bottom: 12px;
+        margin-bottom: 16px;
+      }
+
+      .form-group:last-child {
+        margin-bottom: 0;
       }
 
       .form-group label {
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
         font-weight: 500;
-        font-size: 12px;
-      }
-
-      .form-group select,
-      .form-group input {
-        width: 100%;
-        padding: 8px 10px;
-        border: 1px solid var(--divider-color);
-        border-radius: 6px;
-        background: var(--secondary-background-color);
-        color: var(--primary-text-color);
         font-size: 13px;
-        box-sizing: border-box;
+        color: var(--primary-text-color);
       }
 
-      .checkbox-group {
+      .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, #fff);
+        color: var(--primary-text-color);
+        font-size: 14px;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+      }
+
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .form-divider {
+        height: 1px;
+        background: var(--divider-color);
+        margin: 16px 0;
+      }
+
+      /* Toggle switch */
+      .toggle-row {
         display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 12px;
+        justify-content: space-between;
+        padding: 8px 0;
       }
 
-      .checkbox-group input[type="checkbox"] {
-        width: auto;
+      .toggle-row .toggle-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .toggle-row .toggle-hint {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
+
+      .toggle-switch {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        flex-shrink: 0;
+      }
+
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--divider-color);
+        transition: 0.3s;
+        border-radius: 24px;
+      }
+
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+
+      .toggle-switch input:checked + .toggle-slider {
+        background-color: var(--primary-color);
+      }
+
+      .toggle-switch input:checked + .toggle-slider:before {
+        transform: translateX(20px);
+      }
+
+      /* Range slider */
+      .range-group {
+        padding: 8px 0;
+      }
+
+      .range-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .range-header .range-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .range-value {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary-color);
+        min-width: 40px;
+        text-align: right;
+      }
+
+      .range-input {
+        width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--divider-color);
+        outline: none;
+        -webkit-appearance: none;
+      }
+
+      .range-input::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
       }
 
       .modal-actions {
         display: flex;
         gap: 8px;
         margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--divider-color);
       }
 
       .btn {
@@ -548,7 +661,6 @@ class EnergySchedulerCard extends HTMLElement {
     return `
       <div class="card-header">
         <h2>⚡ ${this._config?.title || 'Energy Scheduler'}</h2>
-        <span class="header-info">48h</span>
       </div>
 
       ${this._config?.show_chart ? `
@@ -580,52 +692,75 @@ class EnergySchedulerCard extends HTMLElement {
 
           <div class="price-info">
             <div class="row">
-              <span>Buy:</span>
+              <span>📈 Buy:</span>
               <span id="modalBuyPrice">--</span>
             </div>
             <div class="row">
-              <span>Sell:</span>
+              <span>📉 Sell:</span>
               <span id="modalSellPrice">--</span>
             </div>
           </div>
 
           <div class="form-group">
-            <label for="actionSelect">Action</label>
+            <label for="actionSelect">Inverter Mode</label>
             <select id="actionSelect">
               <option value="">-- Select --</option>
             </select>
           </div>
 
-          <div class="form-group" id="evChargingGroup" style="display: none;">
-            <div class="checkbox-group">
-              <input type="checkbox" id="evCharging">
-              <label for="evCharging">🚗 EV Mode (auto-stop by condition)</label>
+          <div id="optionsSection" style="display: none;">
+            <div class="form-divider"></div>
+
+            <div class="toggle-row" id="evChargingGroup" style="display: none;">
+              <div>
+                <div class="toggle-label">🚗 EV Charging</div>
+                <div class="toggle-hint">Stop when EV condition met</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="evCharging">
+                <span class="toggle-slider"></span>
+              </label>
             </div>
-          </div>
 
-          <div class="form-group" id="socLimitGroup" style="display: none;">
-            <label for="socLimitType">SOC Limit Type</label>
-            <select id="socLimitType">
-              <option value="max">🔋 Charge to (stop when SOC ≥)</option>
-              <option value="min">⚡ Discharge to (stop when SOC ≤)</option>
-            </select>
-          </div>
+            <div class="form-divider" id="socDivider" style="display: none;"></div>
 
-          <div class="form-group" id="socLimitValueGroup" style="display: none;">
-            <label for="socLimit">SOC Limit: <span id="socLimitValue">100%</span></label>
-            <input type="range" id="socLimit" min="0" max="100" value="100">
-          </div>
-
-          <div class="form-group" id="fullHourGroup" style="display: none;">
-            <div class="checkbox-group">
-              <input type="checkbox" id="fullHour">
-              <label for="fullHour">Full hour</label>
+            <div id="socSection" style="display: none;">
+              <div class="form-group" id="socLimitGroup">
+                <label for="socLimitType">SOC Condition</label>
+                <select id="socLimitType">
+                  <option value="max">Charge to SOC ≥</option>
+                  <option value="min">Discharge to SOC ≤</option>
+                </select>
+              </div>
+              <div class="range-group" id="socLimitValueGroup">
+                <div class="range-header">
+                  <span class="range-label">Target SOC</span>
+                  <span class="range-value" id="socLimitValue">100%</span>
+                </div>
+                <input type="range" class="range-input" id="socLimit" min="0" max="100" value="100">
+              </div>
             </div>
-          </div>
 
-          <div class="form-group" id="minutesGroup" style="display: none;">
-            <label for="minutes">Minutes: <span id="minutesValue">30</span></label>
-            <input type="range" id="minutes" min="1" max="60" value="30">
+            <div class="form-divider" id="durationDivider" style="display: none;"></div>
+
+            <div class="toggle-row" id="fullHourGroup" style="display: none;">
+              <div>
+                <div class="toggle-label">⏱️ Full Hour</div>
+                <div class="toggle-hint">Run for entire hour</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="fullHour">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="range-group" id="minutesGroup" style="display: none;">
+              <div class="range-header">
+                <span class="range-label">Duration</span>
+                <span class="range-value" id="minutesValue">30 min</span>
+              </div>
+              <input type="range" class="range-input" id="minutes" min="1" max="60" value="30">
+            </div>
           </div>
 
           <div class="modal-actions">
@@ -676,9 +811,18 @@ class EnergySchedulerCard extends HTMLElement {
       });
     }
 
+    const socLimitType = root.getElementById('socLimitType');
+    if (socLimitType) {
+      socLimitType.addEventListener('change', (e) => {
+        const defaultValue = e.target.value === 'max' ? 100 : 30;
+        root.getElementById('socLimit').value = defaultValue;
+        root.getElementById('socLimitValue').textContent = `${defaultValue}%`;
+      });
+    }
+
     if (minutes) {
       minutes.addEventListener('input', (e) => {
-        root.getElementById('minutesValue').textContent = e.target.value;
+        root.getElementById('minutesValue').textContent = `${e.target.value} min`;
       });
     }
 
@@ -693,12 +837,11 @@ class EnergySchedulerCard extends HTMLElement {
 
     if (evCharging) {
       evCharging.addEventListener('change', (e) => {
-        // When EV charging is checked, hide SOC limit fields (use EV condition instead)
-        const socGroup = root.getElementById('socLimitGroup');
-        const socValueGroup = root.getElementById('socLimitValueGroup');
-        const showSoc = !e.target.checked;
-        if (socGroup) socGroup.style.display = showSoc ? 'block' : 'none';
-        if (socValueGroup) socValueGroup.style.display = showSoc ? 'block' : 'none';
+        // When EV charging is checked, hide SOC section (use EV condition instead)
+        const socSection = root.getElementById('socSection');
+        if (socSection) {
+          socSection.style.display = e.target.checked ? 'none' : 'block';
+        }
       });
     }
   }
@@ -1056,7 +1199,7 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('socLimitValue').textContent = `${schedule.soc_limit || 100}%`;
       this.shadowRoot.getElementById('fullHour').checked = schedule.full_hour || false;
       this.shadowRoot.getElementById('minutes').value = schedule.minutes || 30;
-      this.shadowRoot.getElementById('minutesValue').textContent = schedule.minutes || 30;
+      this.shadowRoot.getElementById('minutesValue').textContent = `${schedule.minutes || 30} min`;
       this.shadowRoot.getElementById('evCharging').checked = schedule.ev_charging || false;
       this.shadowRoot.getElementById('modalClear').style.display = 'block';
     } else {
@@ -1065,7 +1208,7 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('socLimitValue').textContent = '100%';
       this.shadowRoot.getElementById('fullHour').checked = true;
       this.shadowRoot.getElementById('minutes').value = 30;
-      this.shadowRoot.getElementById('minutesValue').textContent = '30';
+      this.shadowRoot.getElementById('minutesValue').textContent = '30 min';
       this.shadowRoot.getElementById('evCharging').checked = false;
       this.shadowRoot.getElementById('modalClear').style.display = 'none';
     }
@@ -1093,29 +1236,50 @@ class EnergySchedulerCard extends HTMLElement {
                                 this._integrationConfig.ev_stop_condition.length > 0;
     const hasSocSensor = !!this._integrationConfig?.soc_sensor;
 
-    const socGroup = this.shadowRoot.getElementById('socLimitGroup');
-    const socValueGroup = this.shadowRoot.getElementById('socLimitValueGroup');
-    const fullHourGroup = this.shadowRoot.getElementById('fullHourGroup');
-    const minutesGroup = this.shadowRoot.getElementById('minutesGroup');
+    const optionsSection = this.shadowRoot.getElementById('optionsSection');
     const evChargingGroup = this.shadowRoot.getElementById('evChargingGroup');
+    const socDivider = this.shadowRoot.getElementById('socDivider');
+    const socSection = this.shadowRoot.getElementById('socSection');
+    const fullHourGroup = this.shadowRoot.getElementById('fullHourGroup');
+    const durationDivider = this.shadowRoot.getElementById('durationDivider');
+    const minutesGroup = this.shadowRoot.getElementById('minutesGroup');
 
-    // Show EV charging option only if EV stop condition is configured and action is non-default
-    if (evChargingGroup) {
-      evChargingGroup.style.display = isNonDefault && hasEvStopCondition ? 'block' : 'none';
+    // Show options section when action is non-default
+    if (optionsSection) {
+      optionsSection.style.display = isNonDefault ? 'block' : 'none';
     }
 
-    // Check if EV charging is selected to hide SOC limit
+    // Show EV charging option only if EV stop condition is configured
+    if (evChargingGroup) {
+      evChargingGroup.style.display = hasEvStopCondition ? 'flex' : 'none';
+    }
+
+    // Check if EV charging is selected to hide SOC section
     const evChargingChecked = this.shadowRoot.getElementById('evCharging')?.checked;
 
-    // Show SOC limit only if SOC sensor is configured and not using EV charging
-    const showSocLimit = isNonDefault && hasSocSensor && !evChargingChecked;
-    if (socGroup) socGroup.style.display = showSocLimit ? 'block' : 'none';
-    if (socValueGroup) socValueGroup.style.display = showSocLimit ? 'block' : 'none';
-    if (fullHourGroup) fullHourGroup.style.display = isNonDefault ? 'block' : 'none';
+    // Show SOC section only if SOC sensor is configured and not using EV charging
+    const showSocSection = hasSocSensor && !evChargingChecked;
 
+    // Show divider between EV and SOC only if both are visible
+    if (socDivider) {
+      socDivider.style.display = hasEvStopCondition && showSocSection ? 'block' : 'none';
+    }
+    if (socSection) {
+      socSection.style.display = showSocSection ? 'block' : 'none';
+    }
+
+    // Show duration divider and full hour toggle
+    if (durationDivider) {
+      durationDivider.style.display = 'block';
+    }
+    if (fullHourGroup) {
+      fullHourGroup.style.display = 'flex';
+    }
+
+    // Handle full hour toggle state
     const fullHourChecked = this.shadowRoot.getElementById('fullHour')?.checked;
     if (minutesGroup) {
-      minutesGroup.style.display = isNonDefault && !fullHourChecked ? 'block' : 'none';
+      minutesGroup.style.display = !fullHourChecked ? 'block' : 'none';
     }
   }
 
