@@ -55,6 +55,7 @@ class ScheduleStorageManager:
         soc_limit: int | None = None,
         full_hour: bool = False,
         minutes: int | None = None,
+        ev_charging: bool = False,
     ) -> None:
         """Set schedule for a specific hour."""
         if date not in self._data:
@@ -65,10 +66,11 @@ class ScheduleStorageManager:
             "soc_limit": soc_limit,
             "full_hour": full_hour,
             "minutes": minutes,
+            "ev_charging": ev_charging,
         }
 
-        # Remove None values
-        schedule_entry = {k: v for k, v in schedule_entry.items() if v is not None}
+        # Remove None/False values (except action)
+        schedule_entry = {k: v for k, v in schedule_entry.items() if v is not None and v is not False or k == "action"}
 
         self._data[date][hour] = schedule_entry
         await self.async_save()

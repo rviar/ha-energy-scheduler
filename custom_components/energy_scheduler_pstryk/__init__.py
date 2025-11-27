@@ -18,6 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ATTR_ACTION,
     ATTR_DATE,
+    ATTR_EV_CHARGING,
     ATTR_FULL_HOUR,
     ATTR_HOUR,
     ATTR_MINUTES,
@@ -45,6 +46,7 @@ SET_SCHEDULE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_SOC_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
         vol.Optional(ATTR_FULL_HOUR, default=False): cv.boolean,
         vol.Optional(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+        vol.Optional(ATTR_EV_CHARGING, default=False): cv.boolean,
     }
 )
 
@@ -192,9 +194,10 @@ async def _async_register_services(
         soc_limit = call.data.get(ATTR_SOC_LIMIT)
         full_hour = call.data.get(ATTR_FULL_HOUR, False)
         minutes = call.data.get(ATTR_MINUTES)
+        ev_charging = call.data.get(ATTR_EV_CHARGING, False)
 
         await coordinator.async_set_schedule(
-            date, hour, action, soc_limit, full_hour, minutes
+            date, hour, action, soc_limit, full_hour, minutes, ev_charging
         )
 
     async def handle_clear_schedule(call: ServiceCall) -> None:
@@ -263,12 +266,13 @@ async def _async_register_api(
                 soc_limit = data.get("soc_limit")
                 full_hour = data.get("full_hour", False)
                 minutes = data.get("minutes")
+                ev_charging = data.get("ev_charging", False)
 
                 if not all([date, hour, action]):
                     return self.json({"error": "Missing required fields"}, status_code=400)
 
                 await coordinator.async_set_schedule(
-                    date, hour, action, soc_limit, full_hour, minutes
+                    date, hour, action, soc_limit, full_hour, minutes, ev_charging
                 )
                 return self.json({"success": True})
             except Exception as err:
@@ -327,6 +331,8 @@ async def _async_register_api(
                 "inverter_mode_entity": coordinator.inverter_mode_entity,
                 "default_mode": coordinator.default_mode,
                 "soc_sensor": coordinator.soc_sensor,
+                "ev_sensor": coordinator.ev_sensor,
+                "ev_trigger_below": coordinator.ev_trigger_below,
             })
 
     hass.http.register_view(EnergySchedulerDataView())

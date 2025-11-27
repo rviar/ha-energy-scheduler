@@ -13,6 +13,8 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_DEFAULT_MODE,
+    CONF_EV_SENSOR,
+    CONF_EV_TRIGGER_BELOW,
     CONF_INVERTER_MODE_ENTITY,
     CONF_PRICE_BUY_SENSOR,
     CONF_PRICE_SELL_SENSOR,
@@ -112,6 +114,18 @@ class EnergySchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(CONF_SOC_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_EV_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_EV_TRIGGER_BELOW, default=1.0): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=100,
+                        step=0.1,
+                        unit_of_measurement="A",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
                 ),
             }
         )
@@ -236,6 +250,24 @@ class EnergySchedulerOptionsFlow(config_entries.OptionsFlow):
                     default=current_config.get(CONF_SOC_SENSOR),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_EV_SENSOR,
+                    default=current_config.get(CONF_EV_SENSOR),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_EV_TRIGGER_BELOW,
+                    default=current_config.get(CONF_EV_TRIGGER_BELOW, 1.0),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=100,
+                        step=0.1,
+                        unit_of_measurement="A",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
                 ),
                 vol.Required(
                     CONF_DEFAULT_MODE,

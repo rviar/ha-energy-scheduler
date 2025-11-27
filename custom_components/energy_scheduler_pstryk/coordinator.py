@@ -12,6 +12,8 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DEFAULT_MODE,
+    CONF_EV_SENSOR,
+    CONF_EV_TRIGGER_BELOW,
     CONF_INVERTER_MODE_ENTITY,
     CONF_PRICE_BUY_SENSOR,
     CONF_PRICE_SELL_SENSOR,
@@ -80,6 +82,16 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
     def soc_sensor(self) -> str | None:
         """Return the SOC sensor entity ID."""
         return self._config.get(CONF_SOC_SENSOR)
+
+    @property
+    def ev_sensor(self) -> str | None:
+        """Return the EV charging sensor entity ID."""
+        return self._config.get(CONF_EV_SENSOR)
+
+    @property
+    def ev_trigger_below(self) -> float:
+        """Return the EV trigger threshold (revert when sensor value below this)."""
+        return self._config.get(CONF_EV_TRIGGER_BELOW, 1.0)
 
     async def async_setup(self) -> None:
         """Set up the coordinator."""
@@ -189,6 +201,7 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             soc_limit = hour_schedule.get("soc_limit")
             full_hour = hour_schedule.get("full_hour", False)
             minutes = hour_schedule.get("minutes")
+            ev_charging = hour_schedule.get("ev_charging", False)
 
             if not action:
                 return
@@ -196,8 +209,20 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             should_apply = True
             should_revert = False
 
-            # Check SOC limit if specified
-            if soc_limit is not None and self.soc_sensor:
+            # Check EV charging completion if specified
+            if ev_charging and self.ev_sensor:
+                ev_value = self._get_ev_sensor_value()
+                if ev_value is not None and ev_value < self.ev_trigger_below:
+                    should_apply = False
+                    should_revert = self._current_action == action
+                    if should_revert:
+                        _LOGGER.info(
+                            "EV charging complete (%.2f < %.2f), reverting to default mode",
+                            ev_value, self.ev_trigger_below
+                        )
+
+            # Check SOC limit if specified (only if not EV charging mode)
+            if soc_limit is not None and self.soc_sensor and not ev_charging:
                 current_soc = self._get_current_soc()
                 if current_soc is not None and current_soc >= soc_limit:
                     should_apply = False
@@ -250,6 +275,20 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             return None
 
+    def _get_ev_sensor_value(self) -> float | None:
+        """Get current EV sensor value (e.g., charging current)."""
+        if not self.ev_sensor:
+            return None
+
+        state = self.hass.states.get(self.ev_sensor)
+        if state is None:
+            return None
+
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
     async def _async_apply_mode(self, mode: str) -> None:
         """Apply the specified inverter mode."""
         try:
@@ -281,10 +320,11 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         soc_limit: int | None = None,
         full_hour: bool = False,
         minutes: int | None = None,
+        ev_charging: bool = False,
     ) -> None:
         """Set a schedule entry."""
         await self._storage.async_set_hour_schedule(
-            date, hour, action, soc_limit, full_hour, minutes
+            date, hour, action, soc_limit, full_hour, minutes, ev_charging
         )
         await self.async_request_refresh()
 
