@@ -53,6 +53,7 @@ class ScheduleStorageManager:
         hour: str,
         action: str,
         soc_limit: int | None = None,
+        soc_limit_type: str | None = None,
         full_hour: bool = False,
         minutes: int | None = None,
         ev_charging: bool = False,
@@ -64,6 +65,7 @@ class ScheduleStorageManager:
         schedule_entry = {
             "action": action,
             "soc_limit": soc_limit,
+            "soc_limit_type": soc_limit_type,  # "max" (charge) or "min" (discharge)
             "full_hour": full_hour,
             "minutes": minutes,
             "ev_charging": ev_charging,

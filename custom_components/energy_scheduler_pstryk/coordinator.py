@@ -224,14 +224,27 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             # Check SOC limit if specified (only if not EV charging mode)
             if soc_limit is not None and self.soc_sensor and not ev_charging:
                 current_soc = self._get_current_soc()
-                if current_soc is not None and current_soc >= soc_limit:
-                    should_apply = False
-                    should_revert = self._current_action == action
-                    if should_revert:
-                        _LOGGER.info(
-                            "SOC limit reached (%s%% >= %s%%), reverting to default mode",
-                            current_soc, soc_limit
-                        )
+                soc_limit_type = hour_schedule.get("soc_limit_type", "max")
+
+                if current_soc is not None:
+                    # "max" = charging mode: stop when SOC >= limit
+                    # "min" = discharging mode: stop when SOC <= limit
+                    limit_reached = False
+                    if soc_limit_type == "min" and current_soc <= soc_limit:
+                        limit_reached = True
+                    elif soc_limit_type == "max" and current_soc >= soc_limit:
+                        limit_reached = True
+
+                    if limit_reached:
+                        should_apply = False
+                        should_revert = self._current_action == action
+                        if should_revert:
+                            direction = "discharge" if soc_limit_type == "min" else "charge"
+                            comparison = "<=" if soc_limit_type == "min" else ">="
+                            _LOGGER.info(
+                                "SOC %s limit reached (%s%% %s %s%%), reverting to default mode",
+                                direction, current_soc, comparison, soc_limit
+                            )
 
             # Check minutes limit (> instead of >= to include the target minute)
             if minutes is not None and not full_hour:
@@ -318,13 +331,14 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         hour: str,
         action: str,
         soc_limit: int | None = None,
+        soc_limit_type: str | None = None,
         full_hour: bool = False,
         minutes: int | None = None,
         ev_charging: bool = False,
     ) -> None:
         """Set a schedule entry."""
         await self._storage.async_set_hour_schedule(
-            date, hour, action, soc_limit, full_hour, minutes, ev_charging
+            date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
         )
         await self.async_request_refresh()
 

@@ -39,6 +39,7 @@ ATTR_DATE: Final = "date"
 ATTR_HOUR: Final = "hour"
 ATTR_ACTION: Final = "action"
 ATTR_SOC_LIMIT: Final = "soc_limit"
+ATTR_SOC_LIMIT_TYPE: Final = "soc_limit_type"  # "max" (charge) or "min" (discharge)
 ATTR_FULL_HOUR: Final = "full_hour"
 ATTR_MINUTES: Final = "minutes"
 ATTR_EV_CHARGING: Final = "ev_charging"

@@ -23,6 +23,7 @@ from .const import (
     ATTR_HOUR,
     ATTR_MINUTES,
     ATTR_SOC_LIMIT,
+    ATTR_SOC_LIMIT_TYPE,
     DOMAIN,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
@@ -44,6 +45,7 @@ SET_SCHEDULE_SCHEMA = vol.Schema(
         vol.Required(ATTR_HOUR): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
         vol.Required(ATTR_ACTION): cv.string,
         vol.Optional(ATTR_SOC_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+        vol.Optional(ATTR_SOC_LIMIT_TYPE, default="max"): vol.In(["max", "min"]),
         vol.Optional(ATTR_FULL_HOUR, default=False): cv.boolean,
         vol.Optional(ATTR_MINUTES): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
         vol.Optional(ATTR_EV_CHARGING, default=False): cv.boolean,
@@ -197,12 +199,13 @@ async def _async_register_services(
         hour = str(call.data[ATTR_HOUR])
         action = call.data[ATTR_ACTION]
         soc_limit = call.data.get(ATTR_SOC_LIMIT)
+        soc_limit_type = call.data.get(ATTR_SOC_LIMIT_TYPE, "max")
         full_hour = call.data.get(ATTR_FULL_HOUR, False)
         minutes = call.data.get(ATTR_MINUTES)
         ev_charging = call.data.get(ATTR_EV_CHARGING, False)
 
         await coordinator.async_set_schedule(
-            date, hour, action, soc_limit, full_hour, minutes, ev_charging
+            date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
         )
 
     async def handle_clear_schedule(call: ServiceCall) -> None:
@@ -269,6 +272,7 @@ async def _async_register_api(
                 hour = str(data.get("hour"))
                 action = data.get("action")
                 soc_limit = data.get("soc_limit")
+                soc_limit_type = data.get("soc_limit_type", "max")
                 full_hour = data.get("full_hour", False)
                 minutes = data.get("minutes")
                 ev_charging = data.get("ev_charging", False)
@@ -277,7 +281,7 @@ async def _async_register_api(
                     return self.json({"error": "Missing required fields"}, status_code=400)
 
                 await coordinator.async_set_schedule(
-                    date, hour, action, soc_limit, full_hour, minutes, ev_charging
+                    date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
                 )
                 return self.json({"success": True})
             except Exception as err:

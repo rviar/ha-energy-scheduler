@@ -159,13 +159,14 @@ class EnergySchedulerCard extends HTMLElement {
     }
   }
 
-  async _saveSchedule(date, hour, action, socLimit, fullHour, minutes, evCharging) {
+  async _saveSchedule(date, hour, action, socLimit, socLimitType, fullHour, minutes, evCharging) {
     try {
       await this._hass.callApi('POST', 'energy_scheduler_pstryk/schedule', {
         date,
         hour: parseInt(hour),
         action,
         soc_limit: socLimit,
+        soc_limit_type: socLimitType,
         full_hour: fullHour,
         minutes: minutes,
         ev_charging: evCharging
@@ -599,6 +600,14 @@ class EnergySchedulerCard extends HTMLElement {
           </div>
 
           <div class="form-group" id="socLimitGroup" style="display: none;">
+            <label for="socLimitType">SOC Limit Type</label>
+            <select id="socLimitType">
+              <option value="max">🔋 Charge to (stop when SOC ≥)</option>
+              <option value="min">⚡ Discharge to (stop when SOC ≤)</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="socLimitValueGroup" style="display: none;">
             <label for="socLimit">SOC Limit: <span id="socLimitValue">100%</span></label>
             <input type="range" id="socLimit" min="0" max="100" value="100">
           </div>
@@ -1031,6 +1040,7 @@ class EnergySchedulerCard extends HTMLElement {
     });
 
     if (schedule) {
+      this.shadowRoot.getElementById('socLimitType').value = schedule.soc_limit_type || 'max';
       this.shadowRoot.getElementById('socLimit').value = schedule.soc_limit || 100;
       this.shadowRoot.getElementById('socLimitValue').textContent = `${schedule.soc_limit || 100}%`;
       this.shadowRoot.getElementById('fullHour').checked = schedule.full_hour || false;
@@ -1039,6 +1049,7 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('evCharging').checked = schedule.ev_charging || false;
       this.shadowRoot.getElementById('modalClear').style.display = 'block';
     } else {
+      this.shadowRoot.getElementById('socLimitType').value = 'max';
       this.shadowRoot.getElementById('socLimit').value = 100;
       this.shadowRoot.getElementById('socLimitValue').textContent = '100%';
       this.shadowRoot.getElementById('fullHour').checked = false;
@@ -1067,8 +1078,10 @@ class EnergySchedulerCard extends HTMLElement {
     const defaultMode = this._data?.default_mode || '';
     const isNonDefault = action && action !== defaultMode && action !== '';
     const hasEvSensor = !!this._integrationConfig?.ev_sensor;
+    const hasSocSensor = !!this._integrationConfig?.soc_sensor;
 
     const socGroup = this.shadowRoot.getElementById('socLimitGroup');
+    const socValueGroup = this.shadowRoot.getElementById('socLimitValueGroup');
     const fullHourGroup = this.shadowRoot.getElementById('fullHourGroup');
     const minutesGroup = this.shadowRoot.getElementById('minutesGroup');
     const evChargingGroup = this.shadowRoot.getElementById('evChargingGroup');
@@ -1081,7 +1094,10 @@ class EnergySchedulerCard extends HTMLElement {
     // Check if EV charging is selected to hide SOC limit
     const evChargingChecked = this.shadowRoot.getElementById('evCharging')?.checked;
 
-    if (socGroup) socGroup.style.display = isNonDefault && !evChargingChecked ? 'block' : 'none';
+    // Show SOC limit only if SOC sensor is configured and not using EV charging
+    const showSocLimit = isNonDefault && hasSocSensor && !evChargingChecked;
+    if (socGroup) socGroup.style.display = showSocLimit ? 'block' : 'none';
+    if (socValueGroup) socValueGroup.style.display = showSocLimit ? 'block' : 'none';
     if (fullHourGroup) fullHourGroup.style.display = isNonDefault ? 'block' : 'none';
 
     const fullHourChecked = this.shadowRoot.getElementById('fullHour')?.checked;
@@ -1100,6 +1116,7 @@ class EnergySchedulerCard extends HTMLElement {
 
     const defaultMode = this._data?.default_mode || '';
     let socLimit = null;
+    let socLimitType = null;
     let fullHour = false;
     let minutes = null;
     let evCharging = false;
@@ -1107,8 +1124,9 @@ class EnergySchedulerCard extends HTMLElement {
     if (action !== defaultMode) {
       evCharging = this.shadowRoot.getElementById('evCharging').checked;
       // Only set SOC limit if not using EV charging (EV uses its own sensor)
-      if (!evCharging) {
+      if (!evCharging && this._integrationConfig?.soc_sensor) {
         socLimit = parseInt(this.shadowRoot.getElementById('socLimit').value);
+        socLimitType = this.shadowRoot.getElementById('socLimitType').value;
       }
       fullHour = this.shadowRoot.getElementById('fullHour').checked;
       if (!fullHour) {
@@ -1121,6 +1139,7 @@ class EnergySchedulerCard extends HTMLElement {
       this._modalHour,
       action,
       socLimit,
+      socLimitType,
       fullHour,
       minutes,
       evCharging
