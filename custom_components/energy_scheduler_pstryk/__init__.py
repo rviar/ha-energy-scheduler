@@ -340,8 +340,7 @@ async def _async_register_api(
                 "inverter_mode_entity": coordinator.inverter_mode_entity,
                 "default_mode": coordinator.default_mode,
                 "soc_sensor": coordinator.soc_sensor,
-                "ev_sensor": coordinator.ev_sensor,
-                "ev_trigger_below": coordinator.ev_trigger_below,
+                "ev_stop_condition": coordinator.ev_stop_condition,
             })
 
     hass.http.register_view(EnergySchedulerDataView())
