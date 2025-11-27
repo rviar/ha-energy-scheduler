@@ -79,12 +79,20 @@ class EnergySchedulerCard extends HTMLElement {
     if (this._initialized && !this._refreshInterval) {
       this._startAutoRefresh();
     }
+    // Recreate chart when card becomes visible again (tab switch)
+    if (this._initialized && this._config?.show_chart && !this._chartInstance) {
+      this._setupChart();
+    }
   }
 
   disconnectedCallback() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = null;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
     }
     if (this._chartInstance) {
       this._chartInstance.destroy();
@@ -93,7 +101,11 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   _formatDate(date) {
-    return date.toISOString().split('T')[0];
+    // Use local timezone, not UTC
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   _formatHour(hour) {
@@ -811,6 +823,16 @@ class EnergySchedulerCard extends HTMLElement {
       });
 
       this._updateChart();
+
+      // Setup ResizeObserver to handle tab switches and visibility changes
+      if (!this._resizeObserver) {
+        this._resizeObserver = new ResizeObserver(() => {
+          if (this._chartInstance && canvas.offsetParent !== null) {
+            this._chartInstance.resize();
+          }
+        });
+        this._resizeObserver.observe(canvas.parentElement);
+      }
     } catch (error) {
       console.error('Failed to initialize Chart.js:', error);
     }
