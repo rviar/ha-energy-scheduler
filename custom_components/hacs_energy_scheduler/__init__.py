@@ -1,4 +1,4 @@
-"""Energy Scheduler Pstryk integration for Home Assistant."""
+"""HACS Energy Scheduler integration for Home Assistant."""
 from __future__ import annotations
 
 import logging
@@ -67,13 +67,13 @@ APPLY_MODE_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Set up the Energy Scheduler Pstryk component."""
+    """Set up the HACS Energy Scheduler component."""
     hass.data.setdefault(DOMAIN, {})
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Energy Scheduler Pstryk from a config entry."""
+    """Set up HACS Energy Scheduler from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
     # Initialize storage manager
@@ -107,7 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Listen for options updates
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-    _LOGGER.info("Energy Scheduler Pstryk integration set up successfully")
+    _LOGGER.info("HACS Energy Scheduler integration set up successfully")
     return True
 
 
@@ -242,8 +242,8 @@ async def _async_register_api(
     class EnergySchedulerDataView(HomeAssistantView):
         """API view for getting scheduler data."""
 
-        url = "/api/energy_scheduler_pstryk/data"
-        name = "api:energy_scheduler_pstryk:data"
+        url = "/api/hacs_energy_scheduler/data"
+        name = "api:hacs_energy_scheduler:data"
         requires_auth = True
 
         async def get(self, request: web.Request) -> web.Response:
@@ -254,8 +254,8 @@ async def _async_register_api(
     class EnergySchedulerScheduleView(HomeAssistantView):
         """API view for managing schedules."""
 
-        url = "/api/energy_scheduler_pstryk/schedule"
-        name = "api:energy_scheduler_pstryk:schedule"
+        url = "/api/hacs_energy_scheduler/schedule"
+        name = "api:hacs_energy_scheduler:schedule"
         requires_auth = True
 
         async def get(self, request: web.Request) -> web.Response:
@@ -306,8 +306,8 @@ async def _async_register_api(
     class EnergySchedulerApplyModeView(HomeAssistantView):
         """API view for applying mode immediately."""
 
-        url = "/api/energy_scheduler_pstryk/apply_mode"
-        name = "api:energy_scheduler_pstryk:apply_mode"
+        url = "/api/hacs_energy_scheduler/apply_mode"
+        name = "api:hacs_energy_scheduler:apply_mode"
         requires_auth = True
 
         async def post(self, request: web.Request) -> web.Response:
@@ -328,8 +328,8 @@ async def _async_register_api(
     class EnergySchedulerConfigView(HomeAssistantView):
         """API view for getting configuration."""
 
-        url = "/api/energy_scheduler_pstryk/config"
-        name = "api:energy_scheduler_pstryk:config"
+        url = "/api/hacs_energy_scheduler/config"
+        name = "api:hacs_energy_scheduler:config"
         requires_auth = True
 
         async def get(self, request: web.Request) -> web.Response:

@@ -1,8 +1,8 @@
-"""Constants for Energy Scheduler Pstryk integration."""
+"""Constants for HACS Energy Scheduler integration."""
 from typing import Final
 
-DOMAIN: Final = "energy_scheduler_pstryk"
-NAME: Final = "Energy Scheduler Pstryk"
+DOMAIN: Final = "hacs_energy_scheduler"
+NAME: Final = "HACS Energy Scheduler"
 VERSION: Final = "1.0.0"
 
 # Configuration keys
@@ -24,7 +24,7 @@ STORAGE_KEY: Final = f"{DOMAIN}_schedule"
 STORAGE_VERSION: Final = 1
 
 # Panel
-PANEL_URL: Final = f"/energy_scheduler_pstryk/panel.js"
+PANEL_URL: Final = f"/hacs_energy_scheduler/panel.js"
 PANEL_TITLE: Final = "Energy Scheduler"
 PANEL_ICON: Final = "mdi:calendar-clock"
 PANEL_NAME: Final = "energy-scheduler-panel"

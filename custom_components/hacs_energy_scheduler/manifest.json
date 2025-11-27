@@ -1,0 +1,12 @@
+{
+  "domain": "hacs_energy_scheduler",
+  "name": "HACS Energy Scheduler",
+  "version": "1.0.0",
+  "codeowners": ["@rviar"],
+  "config_flow": true,
+  "dependencies": ["frontend"],
+  "documentation": "https://github.com/rviar/ha-energy-scheduler",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/rviar/ha-energy-scheduler/issues",
+  "requirements": []
+}

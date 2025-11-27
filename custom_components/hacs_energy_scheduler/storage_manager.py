@@ -1,4 +1,4 @@
-"""Storage manager for Energy Scheduler Pstryk."""
+"""Storage manager for HACS Energy Scheduler."""
 from __future__ import annotations
 
 import logging

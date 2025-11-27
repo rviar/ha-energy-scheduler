@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Energy Scheduler Pstryk",
+        "title": "HACS Energy Scheduler",
         "description": "Configure the energy scheduler integration. Select the sensors for energy prices and the inverter mode entity.",
         "data": {
           "price_buy_sensor": "Buy Price Sensor",

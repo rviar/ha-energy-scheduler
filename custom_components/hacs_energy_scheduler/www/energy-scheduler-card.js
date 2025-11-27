@@ -1,6 +1,6 @@
 /**
- * Energy Scheduler Pstryk - Lovelace Card for Home Assistant
- * Provides UI for scheduling actions based on energy prices from Pstryk API
+ * HACS Energy Scheduler - Lovelace Card for Home Assistant
+ * Provides UI for scheduling actions based on energy prices
  */
 
 // Load Chart.js from CDN
@@ -144,7 +144,7 @@ class EnergySchedulerCard extends HTMLElement {
 
   async _loadIntegrationConfig() {
     try {
-      const response = await this._hass.callApi('GET', 'energy_scheduler_pstryk/config');
+      const response = await this._hass.callApi('GET', 'hacs_energy_scheduler/config');
       this._integrationConfig = response;
     } catch (error) {
       console.error('Failed to load integration config:', error);
@@ -153,7 +153,7 @@ class EnergySchedulerCard extends HTMLElement {
 
   async _loadData() {
     try {
-      const response = await this._hass.callApi('GET', 'energy_scheduler_pstryk/data');
+      const response = await this._hass.callApi('GET', 'hacs_energy_scheduler/data');
       this._data = response;
       this._schedule = response.schedule || {};
       this._updateChart();
@@ -165,7 +165,7 @@ class EnergySchedulerCard extends HTMLElement {
 
   async _saveSchedule(date, hour, action, socLimit, socLimitType, fullHour, minutes, evCharging) {
     try {
-      await this._hass.callApi('POST', 'energy_scheduler_pstryk/schedule', {
+      await this._hass.callApi('POST', 'hacs_energy_scheduler/schedule', {
         date,
         hour: parseInt(hour),
         action,
@@ -185,7 +185,7 @@ class EnergySchedulerCard extends HTMLElement {
 
   async _clearSchedule(date, hour) {
     try {
-      let url = `energy_scheduler_pstryk/schedule?date=${date}`;
+      let url = `hacs_energy_scheduler/schedule?date=${date}`;
       if (hour !== undefined) {
         url += `&hour=${hour}`;
       }

@@ -1,4 +1,4 @@
-"""Config flow for Energy Scheduler Pstryk integration."""
+"""Config flow for HACS Energy Scheduler integration."""
 from __future__ import annotations
 
 import logging
@@ -53,7 +53,7 @@ def _get_input_select_options(hass: HomeAssistant, entity_id: str) -> list[str]:
 
 
 class EnergySchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Energy Scheduler Pstryk."""
+    """Handle a config flow for HACS Energy Scheduler."""
 
     VERSION = 1
 
@@ -185,7 +185,7 @@ class EnergySchedulerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EnergySchedulerOptionsFlow(config_entries.OptionsFlow):
-    """Handle options flow for Energy Scheduler Pstryk."""
+    """Handle options flow for HACS Energy Scheduler."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""

@@ -1,4 +1,4 @@
-"""Data coordinator for Energy Scheduler Pstryk."""
+"""Data coordinator for HACS Energy Scheduler."""
 from __future__ import annotations
 
 import logging
