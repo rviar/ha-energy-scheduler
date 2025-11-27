@@ -1052,7 +1052,7 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('socLimitType').value = 'max';
       this.shadowRoot.getElementById('socLimit').value = 100;
       this.shadowRoot.getElementById('socLimitValue').textContent = '100%';
-      this.shadowRoot.getElementById('fullHour').checked = false;
+      this.shadowRoot.getElementById('fullHour').checked = true;
       this.shadowRoot.getElementById('minutes').value = 30;
       this.shadowRoot.getElementById('minutesValue').textContent = '30';
       this.shadowRoot.getElementById('evCharging').checked = false;
