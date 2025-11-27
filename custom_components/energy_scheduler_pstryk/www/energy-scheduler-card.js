@@ -689,11 +689,12 @@ class EnergySchedulerCard extends HTMLElement {
 
     if (evCharging) {
       evCharging.addEventListener('change', (e) => {
-        // When EV charging is checked, hide SOC limit (use EV sensor instead)
+        // When EV charging is checked, hide SOC limit fields (use EV condition instead)
         const socGroup = root.getElementById('socLimitGroup');
-        if (socGroup) {
-          socGroup.style.display = e.target.checked ? 'none' : 'block';
-        }
+        const socValueGroup = root.getElementById('socLimitValueGroup');
+        const showSoc = !e.target.checked;
+        if (socGroup) socGroup.style.display = showSoc ? 'block' : 'none';
+        if (socValueGroup) socValueGroup.style.display = showSoc ? 'block' : 'none';
       });
     }
   }
@@ -701,6 +702,12 @@ class EnergySchedulerCard extends HTMLElement {
   async _setupChart() {
     const canvas = this.shadowRoot.getElementById('priceChart');
     if (!canvas) return;
+
+    // Destroy existing chart instance before creating a new one
+    if (this._chartInstance) {
+      this._chartInstance.destroy();
+      this._chartInstance = null;
+    }
 
     try {
       await loadChartJS();
