@@ -1,1231 +1,684 @@
-// First line - verify file loading (appears before any other code)
-console.log('%c[Energy Scheduler] File loading started v1.5.0 @ ' + new Date().toISOString(), 'background: #222; color: #bada55; font-size: 14px;');
-
-// Global error handler to catch any parsing/loading errors
-window.__energySchedulerLoaded = false;
-window.__energySchedulerLoadStart = Date.now();
-
-window.addEventListener('error', function(e) {
-  if (e.filename && e.filename.includes('energy-scheduler-card')) {
-    console.error('%c[Energy Scheduler] SCRIPT ERROR!', 'background: red; color: white; font-size: 16px;', {
-      message: e.message,
-      filename: e.filename,
-      lineno: e.lineno,
-      colno: e.colno,
-      error: e.error
-    });
-  }
-});
-
-// Check if we're loading too late (card might already be trying to render)
-if (document.querySelector('energy-scheduler-card')) {
-  console.warn('%c[Energy Scheduler] WARNING: Card element exists before script loaded!', 'background: orange; color: black;');
-}
-
-/**
- * HACS Energy Scheduler - Lovelace Card for Home Assistant
- * Provides UI for scheduling actions based on energy prices
- *
- * Best practices applied:
- * - Simple, robust initialization following HA official patterns
- * - setConfig never throws, renders gracefully
- * - hass setter handles reactive updates efficiently
- * - Uses Shadow DOM for encapsulation
- * - Proper lifecycle management with connectedCallback/disconnectedCallback
- */
-
-// Version for cache busting and debugging
-const CARD_VERSION = '1.5.0';
-
-// Debug mode - set to true for verbose logging
-const DEBUG = true;
-const log = (...args) => DEBUG && console.log('[Energy Scheduler]', ...args);
-const logWarn = (...args) => console.warn('[Energy Scheduler]', ...args);
-const logError = (...args) => console.error('[Energy Scheduler]', ...args);
-
-// Chart.js loading state (singleton)
-let chartJSPromise = null;
-let chartJSLoaded = false;
-
-const loadChartJS = () => {
-  if (chartJSLoaded && window.Chart) {
-    return Promise.resolve(window.Chart);
+var EnergySchedulerCard=function(t){"use strict";var e,i=Object.defineProperty,s=(t,e,s)=>((t,e,s)=>e in t?i(t,e,{enumerable:!0,configurable:!0,writable:!0,value:s}):t[e]=s)(t,"symbol"!=typeof e?e+"":e,s);const o=globalThis,n=o.ShadowRoot&&(void 0===o.ShadyCSS||o.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,r=Symbol(),a=new WeakMap;let l=class{constructor(t,e,i){if(this._$cssResult$=!0,i!==r)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=e}get styleSheet(){let t=this.o;const e=this.t;if(n&&void 0===t){const i=void 0!==e&&1===e.length;i&&(t=a.get(e)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),i&&a.set(e,t))}return t}toString(){return this.cssText}};const h=(t,...e)=>{const i=1===t.length?t[0]:e.reduce((e,i,s)=>e+(t=>{if(!0===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(i)+t[s+1],t[0]);return new l(i,t,r)},c=n?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let e="";for(const i of t.cssRules)e+=i.cssText;return(t=>new l("string"==typeof t?t:t+"",void 0,r))(e)})(t):t,{is:d,defineProperty:u,getOwnPropertyDescriptor:p,getOwnPropertyNames:g,getOwnPropertySymbols:f,getPrototypeOf:m}=Object,b=globalThis,x=b.trustedTypes,_=x?x.emptyScript:"",y=b.reactiveElementPolyfillSupport,v=(t,e)=>t,w={toAttribute(t,e){switch(e){case Boolean:t=t?_:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t)}return t},fromAttribute(t,e){let i=t;switch(e){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t)}catch(s){i=null}}return i}},M=(t,e)=>!d(t,e),k={attribute:!0,type:String,converter:w,reflect:!1,useDefault:!1,hasChanged:M};Symbol.metadata??(Symbol.metadata=Symbol("metadata")),b.litPropertyMetadata??(b.litPropertyMetadata=new WeakMap);let S=class extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??(this.l=[])).push(t)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,e=k){if(e.state&&(e.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(t)&&((e=Object.create(e)).wrapped=!0),this.elementProperties.set(t,e),!e.noAccessor){const i=Symbol(),s=this.getPropertyDescriptor(t,i,e);void 0!==s&&u(this.prototype,t,s)}}static getPropertyDescriptor(t,e,i){const{get:s,set:o}=p(this.prototype,t)??{get(){return this[e]},set(t){this[e]=t}};return{get:s,set(e){const n=null==s?void 0:s.call(this);null==o||o.call(this,e),this.requestUpdate(t,n,i)},configurable:!0,enumerable:!0}}static getPropertyOptions(t){return this.elementProperties.get(t)??k}static _$Ei(){if(this.hasOwnProperty(v("elementProperties")))return;const t=m(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties)}static finalize(){if(this.hasOwnProperty(v("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(v("properties"))){const t=this.properties,e=[...g(t),...f(t)];for(const i of e)this.createProperty(i,t[i])}const t=this[Symbol.metadata];if(null!==t){const e=litPropertyMetadata.get(t);if(void 0!==e)for(const[t,i]of e)this.elementProperties.set(t,i)}this._$Eh=new Map;for(const[e,i]of this.elementProperties){const t=this._$Eu(e,i);void 0!==t&&this._$Eh.set(t,e)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(t){const e=[];if(Array.isArray(t)){const i=new Set(t.flat(1/0).reverse());for(const t of i)e.unshift(c(t))}else void 0!==t&&e.push(c(t));return e}static _$Eu(t,e){const i=e.attribute;return!1===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){var t;this._$ES=new Promise(t=>this.enableUpdating=t),this._$AL=new Map,this._$E_(),this.requestUpdate(),null==(t=this.constructor.l)||t.forEach(t=>t(this))}addController(t){var e;(this._$EO??(this._$EO=new Set)).add(t),void 0!==this.renderRoot&&this.isConnected&&(null==(e=t.hostConnected)||e.call(t))}removeController(t){var e;null==(e=this._$EO)||e.delete(t)}_$E_(){const t=new Map,e=this.constructor.elementProperties;for(const i of e.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t)}createRenderRoot(){const t=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((t,e)=>{if(n)t.adoptedStyleSheets=e.map(t=>t instanceof CSSStyleSheet?t:t.styleSheet);else for(const i of e){const e=document.createElement("style"),s=o.litNonce;void 0!==s&&e.setAttribute("nonce",s),e.textContent=i.cssText,t.appendChild(e)}})(t,this.constructor.elementStyles),t}connectedCallback(){var t;this.renderRoot??(this.renderRoot=this.createRenderRoot()),this.enableUpdating(!0),null==(t=this._$EO)||t.forEach(t=>{var e;return null==(e=t.hostConnected)?void 0:e.call(t)})}enableUpdating(t){}disconnectedCallback(){var t;null==(t=this._$EO)||t.forEach(t=>{var e;return null==(e=t.hostDisconnected)?void 0:e.call(t)})}attributeChangedCallback(t,e,i){this._$AK(t,i)}_$ET(t,e){var i;const s=this.constructor.elementProperties.get(t),o=this.constructor._$Eu(t,s);if(void 0!==o&&!0===s.reflect){const n=(void 0!==(null==(i=s.converter)?void 0:i.toAttribute)?s.converter:w).toAttribute(e,s.type);this._$Em=t,null==n?this.removeAttribute(o):this.setAttribute(o,n),this._$Em=null}}_$AK(t,e){var i,s;const o=this.constructor,n=o._$Eh.get(t);if(void 0!==n&&this._$Em!==n){const t=o.getPropertyOptions(n),r="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==(null==(i=t.converter)?void 0:i.fromAttribute)?t.converter:w;this._$Em=n;const a=r.fromAttribute(e,t.type);this[n]=a??(null==(s=this._$Ej)?void 0:s.get(n))??a,this._$Em=null}}requestUpdate(t,e,i){var s;if(void 0!==t){const o=this.constructor,n=this[t];if(i??(i=o.getPropertyOptions(t)),!((i.hasChanged??M)(n,e)||i.useDefault&&i.reflect&&n===(null==(s=this._$Ej)?void 0:s.get(t))&&!this.hasAttribute(o._$Eu(t,i))))return;this.C(t,e,i)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(t,e,{useDefault:i,reflect:s,wrapped:o},n){i&&!(this._$Ej??(this._$Ej=new Map)).has(t)&&(this._$Ej.set(t,n??e??this[t]),!0!==o||void 0!==n)||(this._$AL.has(t)||(this.hasUpdated||i||(e=void 0),this._$AL.set(t,e)),!0===s&&this._$Em!==t&&(this._$Eq??(this._$Eq=new Set)).add(t))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(e){Promise.reject(e)}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){var t;if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??(this.renderRoot=this.createRenderRoot()),this._$Ep){for(const[t,e]of this._$Ep)this[t]=e;this._$Ep=void 0}const t=this.constructor.elementProperties;if(t.size>0)for(const[e,i]of t){const{wrapped:t}=i,s=this[e];!0!==t||this._$AL.has(e)||void 0===s||this.C(e,void 0,i,s)}}let e=!1;const i=this._$AL;try{e=this.shouldUpdate(i),e?(this.willUpdate(i),null==(t=this._$EO)||t.forEach(t=>{var e;return null==(e=t.hostUpdate)?void 0:e.call(t)}),this.update(i)):this._$EM()}catch(s){throw e=!1,this._$EM(),s}e&&this._$AE(i)}willUpdate(t){}_$AE(t){var e;null==(e=this._$EO)||e.forEach(t=>{var e;return null==(e=t.hostUpdated)?void 0:e.call(t)}),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(t)),this.updated(t)}_$EM(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return!0}update(t){this._$Eq&&(this._$Eq=this._$Eq.forEach(t=>this._$ET(t,this[t]))),this._$EM()}updated(t){}firstUpdated(t){}};S.elementStyles=[],S.shadowRootOptions={mode:"open"},S[v("elementProperties")]=new Map,S[v("finalized")]=new Map,null==y||y({ReactiveElement:S}),(b.reactiveElementVersions??(b.reactiveElementVersions=[])).push("2.1.1");const C=globalThis,A=C.trustedTypes,P=A?A.createPolicy("lit-html",{createHTML:t=>t}):void 0,D="$lit$",E=`lit$${Math.random().toFixed(9).slice(2)}$`,O="?"+E,T=`<${O}>`,R=document,L=()=>R.createComment(""),$=t=>null===t||"object"!=typeof t&&"function"!=typeof t,I=Array.isArray,z="[ \t\n\f\r]",F=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,H=/-->/g,V=/>/g,B=RegExp(`>|${z}(?:([^\\s"'>=/]+)(${z}*=${z}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),N=/'/g,W=/"/g,j=/^(?:script|style|textarea|title)$/i,U=(K=1,(t,...e)=>({_$litType$:K,strings:t,values:e})),Y=Symbol.for("lit-noChange"),X=Symbol.for("lit-nothing"),q=new WeakMap,G=R.createTreeWalker(R,129);var K;function J(t,e){if(!I(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==P?P.createHTML(e):e}class Z{constructor({strings:t,_$litType$:e},i){let s;this.parts=[];let o=0,n=0;const r=t.length-1,a=this.parts,[l,h]=((t,e)=>{const i=t.length-1,s=[];let o,n=2===e?"<svg>":3===e?"<math>":"",r=F;for(let a=0;a<i;a++){const e=t[a];let i,l,h=-1,c=0;for(;c<e.length&&(r.lastIndex=c,l=r.exec(e),null!==l);)c=r.lastIndex,r===F?"!--"===l[1]?r=H:void 0!==l[1]?r=V:void 0!==l[2]?(j.test(l[2])&&(o=RegExp("</"+l[2],"g")),r=B):void 0!==l[3]&&(r=B):r===B?">"===l[0]?(r=o??F,h=-1):void 0===l[1]?h=-2:(h=r.lastIndex-l[2].length,i=l[1],r=void 0===l[3]?B:'"'===l[3]?W:N):r===W||r===N?r=B:r===H||r===V?r=F:(r=B,o=void 0);const d=r===B&&t[a+1].startsWith("/>")?" ":"";n+=r===F?e+T:h>=0?(s.push(i),e.slice(0,h)+D+e.slice(h)+E+d):e+E+(-2===h?a:d)}return[J(t,n+(t[i]||"<?>")+(2===e?"</svg>":3===e?"</math>":"")),s]})(t,e);if(this.el=Z.createElement(l,i),G.currentNode=this.el.content,2===e||3===e){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes)}for(;null!==(s=G.nextNode())&&a.length<r;){if(1===s.nodeType){if(s.hasAttributes())for(const t of s.getAttributeNames())if(t.endsWith(D)){const e=h[n++],i=s.getAttribute(t).split(E),r=/([.?@])?(.*)/.exec(e);a.push({type:1,index:o,name:r[2],strings:i,ctor:"."===r[1]?st:"?"===r[1]?ot:"@"===r[1]?nt:it}),s.removeAttribute(t)}else t.startsWith(E)&&(a.push({type:6,index:o}),s.removeAttribute(t));if(j.test(s.tagName)){const t=s.textContent.split(E),e=t.length-1;if(e>0){s.textContent=A?A.emptyScript:"";for(let i=0;i<e;i++)s.append(t[i],L()),G.nextNode(),a.push({type:2,index:++o});s.append(t[e],L())}}}else if(8===s.nodeType)if(s.data===O)a.push({type:2,index:o});else{let t=-1;for(;-1!==(t=s.data.indexOf(E,t+1));)a.push({type:7,index:o}),t+=E.length-1}o++}}static createElement(t,e){const i=R.createElement("template");return i.innerHTML=t,i}}function Q(t,e,i=t,s){var o,n;if(e===Y)return e;let r=void 0!==s?null==(o=i._$Co)?void 0:o[s]:i._$Cl;const a=$(e)?void 0:e._$litDirective$;return(null==r?void 0:r.constructor)!==a&&(null==(n=null==r?void 0:r._$AO)||n.call(r,!1),void 0===a?r=void 0:(r=new a(t),r._$AT(t,i,s)),void 0!==s?(i._$Co??(i._$Co=[]))[s]=r:i._$Cl=r),void 0!==r&&(e=Q(t,r._$AS(t,e.values),r,s)),e}class tt{constructor(t,e){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=e}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:e},parts:i}=this._$AD,s=((null==t?void 0:t.creationScope)??R).importNode(e,!0);G.currentNode=s;let o=G.nextNode(),n=0,r=0,a=i[0];for(;void 0!==a;){if(n===a.index){let e;2===a.type?e=new et(o,o.nextSibling,this,t):1===a.type?e=new a.ctor(o,a.name,a.strings,this,t):6===a.type&&(e=new rt(o,this,t)),this._$AV.push(e),a=i[++r]}n!==(null==a?void 0:a.index)&&(o=G.nextNode(),n++)}return G.currentNode=R,s}p(t){let e=0;for(const i of this._$AV)void 0!==i&&(void 0!==i.strings?(i._$AI(t,i,e),e+=i.strings.length-2):i._$AI(t[e])),e++}}class et{get _$AU(){var t;return(null==(t=this._$AM)?void 0:t._$AU)??this._$Cv}constructor(t,e,i,s){this.type=2,this._$AH=X,this._$AN=void 0,this._$AA=t,this._$AB=e,this._$AM=i,this.options=s,this._$Cv=(null==s?void 0:s.isConnected)??!0}get parentNode(){let t=this._$AA.parentNode;const e=this._$AM;return void 0!==e&&11===(null==t?void 0:t.nodeType)&&(t=e.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,e=this){t=Q(this,t,e),$(t)?t===X||null==t||""===t?(this._$AH!==X&&this._$AR(),this._$AH=X):t!==this._$AH&&t!==Y&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):(t=>I(t)||"function"==typeof(null==t?void 0:t[Symbol.iterator]))(t)?this.k(t):this._(t)}O(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t))}_(t){this._$AH!==X&&$(this._$AH)?this._$AA.nextSibling.data=t:this.T(R.createTextNode(t)),this._$AH=t}$(t){var e;const{values:i,_$litType$:s}=t,o="number"==typeof s?this._$AC(t):(void 0===s.el&&(s.el=Z.createElement(J(s.h,s.h[0]),this.options)),s);if((null==(e=this._$AH)?void 0:e._$AD)===o)this._$AH.p(i);else{const t=new tt(o,this),e=t.u(this.options);t.p(i),this.T(e),this._$AH=t}}_$AC(t){let e=q.get(t.strings);return void 0===e&&q.set(t.strings,e=new Z(t)),e}k(t){I(this._$AH)||(this._$AH=[],this._$AR());const e=this._$AH;let i,s=0;for(const o of t)s===e.length?e.push(i=new et(this.O(L()),this.O(L()),this,this.options)):i=e[s],i._$AI(o),s++;s<e.length&&(this._$AR(i&&i._$AB.nextSibling,s),e.length=s)}_$AR(t=this._$AA.nextSibling,e){var i;for(null==(i=this._$AP)||i.call(this,!1,!0,e);t!==this._$AB;){const e=t.nextSibling;t.remove(),t=e}}setConnected(t){var e;void 0===this._$AM&&(this._$Cv=t,null==(e=this._$AP)||e.call(this,t))}}class it{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,e,i,s,o){this.type=1,this._$AH=X,this._$AN=void 0,this.element=t,this.name=e,this._$AM=s,this.options=o,i.length>2||""!==i[0]||""!==i[1]?(this._$AH=Array(i.length-1).fill(new String),this.strings=i):this._$AH=X}_$AI(t,e=this,i,s){const o=this.strings;let n=!1;if(void 0===o)t=Q(this,t,e,0),n=!$(t)||t!==this._$AH&&t!==Y,n&&(this._$AH=t);else{const s=t;let r,a;for(t=o[0],r=0;r<o.length-1;r++)a=Q(this,s[i+r],e,r),a===Y&&(a=this._$AH[r]),n||(n=!$(a)||a!==this._$AH[r]),a===X?t=X:t!==X&&(t+=(a??"")+o[r+1]),this._$AH[r]=a}n&&!s&&this.j(t)}j(t){t===X?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"")}}class st extends it{constructor(){super(...arguments),this.type=3}j(t){this.element[this.name]=t===X?void 0:t}}class ot extends it{constructor(){super(...arguments),this.type=4}j(t){this.element.toggleAttribute(this.name,!!t&&t!==X)}}class nt extends it{constructor(t,e,i,s,o){super(t,e,i,s,o),this.type=5}_$AI(t,e=this){if((t=Q(this,t,e,0)??X)===Y)return;const i=this._$AH,s=t===X&&i!==X||t.capture!==i.capture||t.once!==i.once||t.passive!==i.passive,o=t!==X&&(i===X||s);s&&this.element.removeEventListener(this.name,this,i),o&&this.element.addEventListener(this.name,this,t),this._$AH=t}handleEvent(t){var e;"function"==typeof this._$AH?this._$AH.call((null==(e=this.options)?void 0:e.host)??this.element,t):this._$AH.handleEvent(t)}}class rt{constructor(t,e,i){this.element=t,this.type=6,this._$AN=void 0,this._$AM=e,this.options=i}get _$AU(){return this._$AM._$AU}_$AI(t){Q(this,t)}}const at=C.litHtmlPolyfillSupport;null==at||at(Z,et),(C.litHtmlVersions??(C.litHtmlVersions=[])).push("3.3.1");const lt=globalThis;class ht extends S{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){var t;const e=super.createRenderRoot();return(t=this.renderOptions).renderBefore??(t.renderBefore=e.firstChild),e}update(t){const e=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=((t,e,i)=>{const s=(null==i?void 0:i.renderBefore)??e;let o=s._$litPart$;if(void 0===o){const t=(null==i?void 0:i.renderBefore)??null;s._$litPart$=o=new et(e.insertBefore(L(),t),t,void 0,i??{})}return o._$AI(t),o})(e,this.renderRoot,this.renderOptions)}connectedCallback(){var t;super.connectedCallback(),null==(t=this._$Do)||t.setConnected(!0)}disconnectedCallback(){var t;super.disconnectedCallback(),null==(t=this._$Do)||t.setConnected(!1)}render(){return Y}}ht._$litElement$=!0,ht.finalized=!0,null==(e=lt.litElementHydrateSupport)||e.call(lt,{LitElement:ht});const ct=lt.litElementPolyfillSupport;null==ct||ct({LitElement:ht}),(lt.litElementVersions??(lt.litElementVersions=[])).push("4.2.1");const dt=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}):customElements.define(t,e)},ut={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:M},pt=(t=ut,e,i)=>{const{kind:s,metadata:o}=i;let n=globalThis.litPropertyMetadata.get(o);if(void 0===n&&globalThis.litPropertyMetadata.set(o,n=new Map),"setter"===s&&((t=Object.create(t)).wrapped=!0),n.set(i.name,t),"accessor"===s){const{name:s}=i;return{set(i){const o=e.get.call(this);e.set.call(this,i),this.requestUpdate(s,o,t)},init(e){return void 0!==e&&this.C(s,void 0,t,e),e}}}if("setter"===s){const{name:s}=i;return function(i){const o=this[s];e.call(this,i),this.requestUpdate(s,o,t)}}throw Error("Unsupported decorator location: "+s)};function gt(t){return(e,i)=>"object"==typeof i?pt(t,e,i):((t,e,i)=>{const s=e.hasOwnProperty(i);return e.constructor.createProperty(i,t),s?Object.getOwnPropertyDescriptor(e,i):void 0})(t,e,i)}function ft(t){return gt({...t,state:!0,attribute:!1})}function mt(t){return t+.5|0}const bt=(t,e,i)=>Math.max(Math.min(t,i),e);function xt(t){return bt(mt(2.55*t),0,255)}function _t(t){return bt(mt(255*t),0,255)}function yt(t){return bt(mt(t/2.55)/100,0,1)}function vt(t){return bt(mt(100*t),0,100)}const wt={0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,A:10,B:11,C:12,D:13,E:14,F:15,a:10,b:11,c:12,d:13,e:14,f:15},Mt=[..."0123456789ABCDEF"],kt=t=>Mt[15&t],St=t=>Mt[(240&t)>>4]+Mt[15&t],Ct=t=>(240&t)>>4==(15&t);function At(t){var e=(t=>Ct(t.r)&&Ct(t.g)&&Ct(t.b)&&Ct(t.a))(t)?kt:St;return t?"#"+e(t.r)+e(t.g)+e(t.b)+((t,e)=>t<255?e(t):"")(t.a,e):void 0}const Pt=/^(hsla?|hwb|hsv)\(\s*([-+.e\d]+)(?:deg)?[\s,]+([-+.e\d]+)%[\s,]+([-+.e\d]+)%(?:[\s,]+([-+.e\d]+)(%)?)?\s*\)$/;function Dt(t,e,i){const s=e*Math.min(i,1-i),o=(e,o=(e+t/30)%12)=>i-s*Math.max(Math.min(o-3,9-o,1),-1);return[o(0),o(8),o(4)]}function Et(t,e,i){const s=(s,o=(s+t/60)%6)=>i-i*e*Math.max(Math.min(o,4-o,1),0);return[s(5),s(3),s(1)]}function Ot(t,e,i){const s=Dt(t,1,.5);let o;for(e+i>1&&(o=1/(e+i),e*=o,i*=o),o=0;o<3;o++)s[o]*=1-e-i,s[o]+=e;return s}function Tt(t){const e=t.r/255,i=t.g/255,s=t.b/255,o=Math.max(e,i,s),n=Math.min(e,i,s),r=(o+n)/2;let a,l,h;return o!==n&&(h=o-n,l=r>.5?h/(2-o-n):h/(o+n),a=function(t,e,i,s,o){return t===o?(e-i)/s+(e<i?6:0):e===o?(i-t)/s+2:(t-e)/s+4}(e,i,s,h,o),a=60*a+.5),[0|a,l||0,r]}function Rt(t,e,i,s){return(Array.isArray(e)?t(e[0],e[1],e[2]):t(e,i,s)).map(_t)}function Lt(t,e,i){return Rt(Dt,t,e,i)}function $t(t){return(t%360+360)%360}function It(t){const e=Pt.exec(t);let i,s=255;if(!e)return;e[5]!==i&&(s=e[6]?xt(+e[5]):_t(+e[5]));const o=$t(+e[2]),n=+e[3]/100,r=+e[4]/100;return i="hwb"===e[1]?function(t,e,i){return Rt(Ot,t,e,i)}(o,n,r):"hsv"===e[1]?function(t,e,i){return Rt(Et,t,e,i)}(o,n,r):Lt(o,n,r),{r:i[0],g:i[1],b:i[2],a:s}}const zt={x:"dark",Z:"light",Y:"re",X:"blu",W:"gr",V:"medium",U:"slate",A:"ee",T:"ol",S:"or",B:"ra",C:"lateg",D:"ights",R:"in",Q:"turquois",E:"hi",P:"ro",O:"al",N:"le",M:"de",L:"yello",F:"en",K:"ch",G:"arks",H:"ea",I:"ightg",J:"wh"},Ft={OiceXe:"f0f8ff",antiquewEte:"faebd7",aqua:"ffff",aquamarRe:"7fffd4",azuY:"f0ffff",beige:"f5f5dc",bisque:"ffe4c4",black:"0",blanKedOmond:"ffebcd",Xe:"ff",XeviTet:"8a2be2",bPwn:"a52a2a",burlywood:"deb887",caMtXe:"5f9ea0",KartYuse:"7fff00",KocTate:"d2691e",cSO:"ff7f50",cSnflowerXe:"6495ed",cSnsilk:"fff8dc",crimson:"dc143c",cyan:"ffff",xXe:"8b",xcyan:"8b8b",xgTMnPd:"b8860b",xWay:"a9a9a9",xgYF:"6400",xgYy:"a9a9a9",xkhaki:"bdb76b",xmagFta:"8b008b",xTivegYF:"556b2f",xSange:"ff8c00",xScEd:"9932cc",xYd:"8b0000",xsOmon:"e9967a",xsHgYF:"8fbc8f",xUXe:"483d8b",xUWay:"2f4f4f",xUgYy:"2f4f4f",xQe:"ced1",xviTet:"9400d3",dAppRk:"ff1493",dApskyXe:"bfff",dimWay:"696969",dimgYy:"696969",dodgerXe:"1e90ff",fiYbrick:"b22222",flSOwEte:"fffaf0",foYstWAn:"228b22",fuKsia:"ff00ff",gaRsbSo:"dcdcdc",ghostwEte:"f8f8ff",gTd:"ffd700",gTMnPd:"daa520",Way:"808080",gYF:"8000",gYFLw:"adff2f",gYy:"808080",honeyMw:"f0fff0",hotpRk:"ff69b4",RdianYd:"cd5c5c",Rdigo:"4b0082",ivSy:"fffff0",khaki:"f0e68c",lavFMr:"e6e6fa",lavFMrXsh:"fff0f5",lawngYF:"7cfc00",NmoncEffon:"fffacd",ZXe:"add8e6",ZcSO:"f08080",Zcyan:"e0ffff",ZgTMnPdLw:"fafad2",ZWay:"d3d3d3",ZgYF:"90ee90",ZgYy:"d3d3d3",ZpRk:"ffb6c1",ZsOmon:"ffa07a",ZsHgYF:"20b2aa",ZskyXe:"87cefa",ZUWay:"778899",ZUgYy:"778899",ZstAlXe:"b0c4de",ZLw:"ffffe0",lime:"ff00",limegYF:"32cd32",lRF:"faf0e6",magFta:"ff00ff",maPon:"800000",VaquamarRe:"66cdaa",VXe:"cd",VScEd:"ba55d3",VpurpN:"9370db",VsHgYF:"3cb371",VUXe:"7b68ee",VsprRggYF:"fa9a",VQe:"48d1cc",VviTetYd:"c71585",midnightXe:"191970",mRtcYam:"f5fffa",mistyPse:"ffe4e1",moccasR:"ffe4b5",navajowEte:"ffdead",navy:"80",Tdlace:"fdf5e6",Tive:"808000",TivedBb:"6b8e23",Sange:"ffa500",SangeYd:"ff4500",ScEd:"da70d6",pOegTMnPd:"eee8aa",pOegYF:"98fb98",pOeQe:"afeeee",pOeviTetYd:"db7093",papayawEp:"ffefd5",pHKpuff:"ffdab9",peru:"cd853f",pRk:"ffc0cb",plum:"dda0dd",powMrXe:"b0e0e6",purpN:"800080",YbeccapurpN:"663399",Yd:"ff0000",Psybrown:"bc8f8f",PyOXe:"4169e1",saddNbPwn:"8b4513",sOmon:"fa8072",sandybPwn:"f4a460",sHgYF:"2e8b57",sHshell:"fff5ee",siFna:"a0522d",silver:"c0c0c0",skyXe:"87ceeb",UXe:"6a5acd",UWay:"708090",UgYy:"708090",snow:"fffafa",sprRggYF:"ff7f",stAlXe:"4682b4",tan:"d2b48c",teO:"8080",tEstN:"d8bfd8",tomato:"ff6347",Qe:"40e0d0",viTet:"ee82ee",JHt:"f5deb3",wEte:"ffffff",wEtesmoke:"f5f5f5",Lw:"ffff00",LwgYF:"9acd32"};let Ht;function Vt(t){Ht||(Ht=function(){const t={},e=Object.keys(Ft),i=Object.keys(zt);let s,o,n,r,a;for(s=0;s<e.length;s++){for(r=a=e[s],o=0;o<i.length;o++)n=i[o],a=a.replace(n,zt[n]);n=parseInt(Ft[r],16),t[a]=[n>>16&255,n>>8&255,255&n]}return t}(),Ht.transparent=[0,0,0,0]);const e=Ht[t.toLowerCase()];return e&&{r:e[0],g:e[1],b:e[2],a:4===e.length?e[3]:255}}const Bt=/^rgba?\(\s*([-+.\d]+)(%)?[\s,]+([-+.e\d]+)(%)?[\s,]+([-+.e\d]+)(%)?(?:[\s,/]+([-+.e\d]+)(%)?)?\s*\)$/;const Nt=t=>t<=.0031308?12.92*t:1.055*Math.pow(t,1/2.4)-.055,Wt=t=>t<=.04045?t/12.92:Math.pow((t+.055)/1.055,2.4);function jt(t,e,i){if(t){let s=Tt(t);s[e]=Math.max(0,Math.min(s[e]+s[e]*i,0===e?360:1)),s=Lt(s),t.r=s[0],t.g=s[1],t.b=s[2]}}function Ut(t,e){return t?Object.assign(e||{},t):t}function Yt(t){var e={r:0,g:0,b:0,a:255};return Array.isArray(t)?t.length>=3&&(e={r:t[0],g:t[1],b:t[2],a:255},t.length>3&&(e.a=_t(t[3]))):(e=Ut(t,{r:0,g:0,b:0,a:1})).a=_t(e.a),e}function Xt(t){return"r"===t.charAt(0)?function(t){const e=Bt.exec(t);let i,s,o,n=255;if(e){if(e[7]!==i){const t=+e[7];n=e[8]?xt(t):bt(255*t,0,255)}return i=+e[1],s=+e[3],o=+e[5],i=255&(e[2]?xt(i):bt(i,0,255)),s=255&(e[4]?xt(s):bt(s,0,255)),o=255&(e[6]?xt(o):bt(o,0,255)),{r:i,g:s,b:o,a:n}}}(t):It(t)}class qt{constructor(t){if(t instanceof qt)return t;const e=typeof t;let i;var s,o,n;"object"===e?i=Yt(t):"string"===e&&(n=(s=t).length,"#"===s[0]&&(4===n||5===n?o={r:255&17*wt[s[1]],g:255&17*wt[s[2]],b:255&17*wt[s[3]],a:5===n?17*wt[s[4]]:255}:7!==n&&9!==n||(o={r:wt[s[1]]<<4|wt[s[2]],g:wt[s[3]]<<4|wt[s[4]],b:wt[s[5]]<<4|wt[s[6]],a:9===n?wt[s[7]]<<4|wt[s[8]]:255})),i=o||Vt(t)||Xt(t)),this._rgb=i,this._valid=!!i}get valid(){return this._valid}get rgb(){var t=Ut(this._rgb);return t&&(t.a=yt(t.a)),t}set rgb(t){this._rgb=Yt(t)}rgbString(){return this._valid?(t=this._rgb)&&(t.a<255?`rgba(${t.r}, ${t.g}, ${t.b}, ${yt(t.a)})`:`rgb(${t.r}, ${t.g}, ${t.b})`):void 0;var t}hexString(){return this._valid?At(this._rgb):void 0}hslString(){return this._valid?function(t){if(!t)return;const e=Tt(t),i=e[0],s=vt(e[1]),o=vt(e[2]);return t.a<255?`hsla(${i}, ${s}%, ${o}%, ${yt(t.a)})`:`hsl(${i}, ${s}%, ${o}%)`}(this._rgb):void 0}mix(t,e){if(t){const i=this.rgb,s=t.rgb;let o;const n=e===o?.5:e,r=2*n-1,a=i.a-s.a,l=((r*a===-1?r:(r+a)/(1+r*a))+1)/2;o=1-l,i.r=255&l*i.r+o*s.r+.5,i.g=255&l*i.g+o*s.g+.5,i.b=255&l*i.b+o*s.b+.5,i.a=n*i.a+(1-n)*s.a,this.rgb=i}return this}interpolate(t,e){return t&&(this._rgb=function(t,e,i){const s=Wt(yt(t.r)),o=Wt(yt(t.g)),n=Wt(yt(t.b));return{r:_t(Nt(s+i*(Wt(yt(e.r))-s))),g:_t(Nt(o+i*(Wt(yt(e.g))-o))),b:_t(Nt(n+i*(Wt(yt(e.b))-n))),a:t.a+i*(e.a-t.a)}}(this._rgb,t._rgb,e)),this}clone(){return new qt(this.rgb)}alpha(t){return this._rgb.a=_t(t),this}clearer(t){return this._rgb.a*=1-t,this}greyscale(){const t=this._rgb,e=mt(.3*t.r+.59*t.g+.11*t.b);return t.r=t.g=t.b=e,this}opaquer(t){return this._rgb.a*=1+t,this}negate(){const t=this._rgb;return t.r=255-t.r,t.g=255-t.g,t.b=255-t.b,this}lighten(t){return jt(this._rgb,2,t),this}darken(t){return jt(this._rgb,2,-t),this}saturate(t){return jt(this._rgb,1,t),this}desaturate(t){return jt(this._rgb,1,-t),this}rotate(t){return function(t,e){var i=Tt(t);i[0]=$t(i[0]+e),i=Lt(i),t.r=i[0],t.g=i[1],t.b=i[2]}(this._rgb,t),this}}function Gt(){}const Kt=(()=>{let t=0;return()=>t++})();function Jt(t){return null==t}function Zt(t){if(Array.isArray&&Array.isArray(t))return!0;const e=Object.prototype.toString.call(t);return"[object"===e.slice(0,7)&&"Array]"===e.slice(-6)}function Qt(t){return null!==t&&"[object Object]"===Object.prototype.toString.call(t)}function te(t){return("number"==typeof t||t instanceof Number)&&isFinite(+t)}function ee(t,e){return te(t)?t:e}function ie(t,e){return void 0===t?e:t}const se=(t,e)=>"string"==typeof t&&t.endsWith("%")?parseFloat(t)/100*e:+t;function oe(t,e,i){if(t&&"function"==typeof t.call)return t.apply(i,e)}function ne(t,e,i,s){let o,n,r;if(Zt(t))for(n=t.length,o=0;o<n;o++)e.call(i,t[o],o);else if(Qt(t))for(r=Object.keys(t),n=r.length,o=0;o<n;o++)e.call(i,t[r[o]],r[o])}function re(t,e){let i,s,o,n;if(!t||!e||t.length!==e.length)return!1;for(i=0,s=t.length;i<s;++i)if(o=t[i],n=e[i],o.datasetIndex!==n.datasetIndex||o.index!==n.index)return!1;return!0}function ae(t){if(Zt(t))return t.map(ae);if(Qt(t)){const e=Object.create(null),i=Object.keys(t),s=i.length;let o=0;for(;o<s;++o)e[i[o]]=ae(t[i[o]]);return e}return t}function le(t){return-1===["__proto__","prototype","constructor"].indexOf(t)}function he(t,e,i,s){if(!le(t))return;const o=e[t],n=i[t];Qt(o)&&Qt(n)?ce(o,n,s):e[t]=ae(n)}function ce(t,e,i){const s=Zt(e)?e:[e],o=s.length;if(!Qt(t))return t;const n=(i=i||{}).merger||he;let r;for(let a=0;a<o;++a){if(r=s[a],!Qt(r))continue;const e=Object.keys(r);for(let s=0,o=e.length;s<o;++s)n(e[s],t,r,i)}return t}function de(t,e){return ce(t,e,{merger:ue})}function ue(t,e,i){if(!le(t))return;const s=e[t],o=i[t];Qt(s)&&Qt(o)?de(s,o):Object.prototype.hasOwnProperty.call(e,t)||(e[t]=ae(o))}const pe={"":t=>t,x:t=>t.x,y:t=>t.y};function ge(t,e){const i=pe[e]||(pe[e]=function(t){const e=function(t){const e=t.split("."),i=[];let s="";for(const o of e)s+=o,s.endsWith("\\")?s=s.slice(0,-1)+".":(i.push(s),s="");return i}(t);return t=>{for(const i of e){if(""===i)break;t=t&&t[i]}return t}}(e));return i(t)}function fe(t){return t.charAt(0).toUpperCase()+t.slice(1)}const me=t=>void 0!==t,be=t=>"function"==typeof t,xe=(t,e)=>{if(t.size!==e.size)return!1;for(const i of t)if(!e.has(i))return!1;return!0};const _e=Math.PI,ye=2*_e,ve=ye+_e,we=Number.POSITIVE_INFINITY,Me=_e/180,ke=_e/2,Se=_e/4,Ce=2*_e/3,Ae=Math.log10,Pe=Math.sign;function De(t,e,i){return Math.abs(t-e)<i}function Ee(t){const e=Math.round(t);t=De(t,e,t/1e3)?e:t;const i=Math.pow(10,Math.floor(Ae(t))),s=t/i;return(s<=1?1:s<=2?2:s<=5?5:10)*i}function Oe(t){return!function(t){return"symbol"==typeof t||"object"==typeof t&&null!==t&&!(Symbol.toPrimitive in t||"toString"in t||"valueOf"in t)}(t)&&!isNaN(parseFloat(t))&&isFinite(t)}function Te(t,e,i){let s,o,n;for(s=0,o=t.length;s<o;s++)n=t[s][i],isNaN(n)||(e.min=Math.min(e.min,n),e.max=Math.max(e.max,n))}function Re(t){return t*(_e/180)}function Le(t){return t*(180/_e)}function $e(t){if(!te(t))return;let e=1,i=0;for(;Math.round(t*e)/e!==t;)e*=10,i++;return i}function Ie(t,e){const i=e.x-t.x,s=e.y-t.y,o=Math.sqrt(i*i+s*s);let n=Math.atan2(s,i);return n<-.5*_e&&(n+=ye),{angle:n,distance:o}}function ze(t,e){return Math.sqrt(Math.pow(e.x-t.x,2)+Math.pow(e.y-t.y,2))}function Fe(t,e){return(t-e+ve)%ye-_e}function He(t){return(t%ye+ye)%ye}function Ve(t,e,i,s){const o=He(t),n=He(e),r=He(i),a=He(n-o),l=He(r-o),h=He(o-n),c=He(o-r);return o===n||o===r||s&&n===r||a>l&&h<c}function Be(t,e,i){return Math.max(e,Math.min(i,t))}function Ne(t,e,i,s=1e-6){return t>=Math.min(e,i)-s&&t<=Math.max(e,i)+s}function We(t,e,i){i=i||(i=>t[i]<e);let s,o=t.length-1,n=0;for(;o-n>1;)s=n+o>>1,i(s)?n=s:o=s;return{lo:n,hi:o}}const je=(t,e,i,s)=>We(t,i,s?s=>{const o=t[s][e];return o<i||o===i&&t[s+1][e]===i}:s=>t[s][e]<i),Ue=(t,e,i)=>We(t,i,s=>t[s][e]>=i);const Ye=["push","pop","shift","splice","unshift"];function Xe(t,e){const i=t._chartjs;if(!i)return;const s=i.listeners,o=s.indexOf(e);-1!==o&&s.splice(o,1),s.length>0||(Ye.forEach(e=>{delete t[e]}),delete t._chartjs)}function qe(t){const e=new Set(t);return e.size===t.length?t:Array.from(e)}const Ge="undefined"==typeof window?function(t){return t()}:window.requestAnimationFrame;function Ke(t,e){let i=[],s=!1;return function(...o){i=o,s||(s=!0,Ge.call(window,()=>{s=!1,t.apply(e,i)}))}}const Je=t=>"start"===t?"left":"end"===t?"right":"center",Ze=(t,e,i)=>"start"===t?e:"end"===t?i:(e+i)/2;function Qe(t,e,i){const s=e.length;let o=0,n=s;if(t._sorted){const{iScale:r,vScale:a,_parsed:l}=t,h=t.dataset&&t.dataset.options?t.dataset.options.spanGaps:null,c=r.axis,{min:d,max:u,minDefined:p,maxDefined:g}=r.getUserBounds();if(p){if(o=Math.min(je(l,c,d).lo,i?s:je(e,c,r.getPixelForValue(d)).lo),h){const t=l.slice(0,o+1).reverse().findIndex(t=>!Jt(t[a.axis]));o-=Math.max(0,t)}o=Be(o,0,s-1)}if(g){let t=Math.max(je(l,r.axis,u,!0).hi+1,i?0:je(e,c,r.getPixelForValue(u),!0).hi+1);if(h){const e=l.slice(t-1).findIndex(t=>!Jt(t[a.axis]));t+=Math.max(0,e)}n=Be(t,o,s)-o}else n=s-o}return{start:o,count:n}}function ti(t){const{xScale:e,yScale:i,_scaleRanges:s}=t,o={xmin:e.min,xmax:e.max,ymin:i.min,ymax:i.max};if(!s)return t._scaleRanges=o,!0;const n=s.xmin!==e.min||s.xmax!==e.max||s.ymin!==i.min||s.ymax!==i.max;return Object.assign(s,o),n}const ei=t=>0===t||1===t,ii=(t,e,i)=>-Math.pow(2,10*(t-=1))*Math.sin((t-e)*ye/i),si=(t,e,i)=>Math.pow(2,-10*t)*Math.sin((t-e)*ye/i)+1,oi={linear:t=>t,easeInQuad:t=>t*t,easeOutQuad:t=>-t*(t-2),easeInOutQuad:t=>(t/=.5)<1?.5*t*t:-.5*(--t*(t-2)-1),easeInCubic:t=>t*t*t,easeOutCubic:t=>(t-=1)*t*t+1,easeInOutCubic:t=>(t/=.5)<1?.5*t*t*t:.5*((t-=2)*t*t+2),easeInQuart:t=>t*t*t*t,easeOutQuart:t=>-((t-=1)*t*t*t-1),easeInOutQuart:t=>(t/=.5)<1?.5*t*t*t*t:-.5*((t-=2)*t*t*t-2),easeInQuint:t=>t*t*t*t*t,easeOutQuint:t=>(t-=1)*t*t*t*t+1,easeInOutQuint:t=>(t/=.5)<1?.5*t*t*t*t*t:.5*((t-=2)*t*t*t*t+2),easeInSine:t=>1-Math.cos(t*ke),easeOutSine:t=>Math.sin(t*ke),easeInOutSine:t=>-.5*(Math.cos(_e*t)-1),easeInExpo:t=>0===t?0:Math.pow(2,10*(t-1)),easeOutExpo:t=>1===t?1:1-Math.pow(2,-10*t),easeInOutExpo:t=>ei(t)?t:t<.5?.5*Math.pow(2,10*(2*t-1)):.5*(2-Math.pow(2,-10*(2*t-1))),easeInCirc:t=>t>=1?t:-(Math.sqrt(1-t*t)-1),easeOutCirc:t=>Math.sqrt(1-(t-=1)*t),easeInOutCirc:t=>(t/=.5)<1?-.5*(Math.sqrt(1-t*t)-1):.5*(Math.sqrt(1-(t-=2)*t)+1),easeInElastic:t=>ei(t)?t:ii(t,.075,.3),easeOutElastic:t=>ei(t)?t:si(t,.075,.3),easeInOutElastic(t){const e=.1125;return ei(t)?t:t<.5?.5*ii(2*t,e,.45):.5+.5*si(2*t-1,e,.45)},easeInBack(t){const e=1.70158;return t*t*((e+1)*t-e)},easeOutBack(t){const e=1.70158;return(t-=1)*t*((e+1)*t+e)+1},easeInOutBack(t){let e=1.70158;return(t/=.5)<1?t*t*((1+(e*=1.525))*t-e)*.5:.5*((t-=2)*t*((1+(e*=1.525))*t+e)+2)},easeInBounce:t=>1-oi.easeOutBounce(1-t),easeOutBounce(t){const e=7.5625,i=2.75;return t<1/i?e*t*t:t<2/i?e*(t-=1.5/i)*t+.75:t<2.5/i?e*(t-=2.25/i)*t+.9375:e*(t-=2.625/i)*t+.984375},easeInOutBounce:t=>t<.5?.5*oi.easeInBounce(2*t):.5*oi.easeOutBounce(2*t-1)+.5};function ni(t){if(t&&"object"==typeof t){const e=t.toString();return"[object CanvasPattern]"===e||"[object CanvasGradient]"===e}return!1}function ri(t){return ni(t)?t:new qt(t)}function ai(t){return ni(t)?t:new qt(t).saturate(.5).darken(.1).hexString()}const li=["x","y","borderWidth","radius","tension"],hi=["color","borderColor","backgroundColor"];const ci=new Map;function di(t,e,i){return function(t,e){e=e||{};const i=t+JSON.stringify(e);let s=ci.get(i);return s||(s=new Intl.NumberFormat(t,e),ci.set(i,s)),s}(e,i).format(t)}const ui={values:t=>Zt(t)?t:""+t,numeric(t,e,i){if(0===t)return"0";const s=this.chart.options.locale;let o,n=t;if(i.length>1){const e=Math.max(Math.abs(i[0].value),Math.abs(i[i.length-1].value));(e<1e-4||e>1e15)&&(o="scientific"),n=function(t,e){let i=e.length>3?e[2].value-e[1].value:e[1].value-e[0].value;Math.abs(i)>=1&&t!==Math.floor(t)&&(i=t-Math.floor(t));return i}(t,i)}const r=Ae(Math.abs(n)),a=isNaN(r)?1:Math.max(Math.min(-1*Math.floor(r),20),0),l={notation:o,minimumFractionDigits:a,maximumFractionDigits:a};return Object.assign(l,this.options.ticks.format),di(t,s,l)},logarithmic(t,e,i){if(0===t)return"0";const s=i[e].significand||t/Math.pow(10,Math.floor(Ae(t)));return[1,2,3,5,10,15].includes(s)||e>.8*i.length?ui.numeric.call(this,t,e,i):""}};var pi={formatters:ui};const gi=Object.create(null),fi=Object.create(null);function mi(t,e){if(!e)return t;const i=e.split(".");for(let s=0,o=i.length;s<o;++s){const e=i[s];t=t[e]||(t[e]=Object.create(null))}return t}function bi(t,e,i){return"string"==typeof e?ce(mi(t,e),i):ce(mi(t,""),e)}class xi{constructor(t,e){this.animation=void 0,this.backgroundColor="rgba(0,0,0,0.1)",this.borderColor="rgba(0,0,0,0.1)",this.color="#666",this.datasets={},this.devicePixelRatio=t=>t.chart.platform.getDevicePixelRatio(),this.elements={},this.events=["mousemove","mouseout","click","touchstart","touchmove"],this.font={family:"'Helvetica Neue', 'Helvetica', 'Arial', sans-serif",size:12,style:"normal",lineHeight:1.2,weight:null},this.hover={},this.hoverBackgroundColor=(t,e)=>ai(e.backgroundColor),this.hoverBorderColor=(t,e)=>ai(e.borderColor),this.hoverColor=(t,e)=>ai(e.color),this.indexAxis="x",this.interaction={mode:"nearest",intersect:!0,includeInvisible:!1},this.maintainAspectRatio=!0,this.onHover=null,this.onClick=null,this.parsing=!0,this.plugins={},this.responsive=!0,this.scale=void 0,this.scales={},this.showLine=!0,this.drawActiveElementsOnTop=!0,this.describe(t),this.apply(e)}set(t,e){return bi(this,t,e)}get(t){return mi(this,t)}describe(t,e){return bi(fi,t,e)}override(t,e){return bi(gi,t,e)}route(t,e,i,s){const o=mi(this,t),n=mi(this,i),r="_"+e;Object.defineProperties(o,{[r]:{value:o[e],writable:!0},[e]:{enumerable:!0,get(){const t=this[r],e=n[s];return Qt(t)?Object.assign({},e,t):ie(t,e)},set(t){this[r]=t}}})}apply(t){t.forEach(t=>t(this))}}var _i=new xi({_scriptable:t=>!t.startsWith("on"),_indexable:t=>"events"!==t,hover:{_fallback:"interaction"},interaction:{_scriptable:!1,_indexable:!1}},[function(t){t.set("animation",{delay:void 0,duration:1e3,easing:"easeOutQuart",fn:void 0,from:void 0,loop:void 0,to:void 0,type:void 0}),t.describe("animation",{_fallback:!1,_indexable:!1,_scriptable:t=>"onProgress"!==t&&"onComplete"!==t&&"fn"!==t}),t.set("animations",{colors:{type:"color",properties:hi},numbers:{type:"number",properties:li}}),t.describe("animations",{_fallback:"animation"}),t.set("transitions",{active:{animation:{duration:400}},resize:{animation:{duration:0}},show:{animations:{colors:{from:"transparent"},visible:{type:"boolean",duration:0}}},hide:{animations:{colors:{to:"transparent"},visible:{type:"boolean",easing:"linear",fn:t=>0|t}}}})},function(t){t.set("layout",{autoPadding:!0,padding:{top:0,right:0,bottom:0,left:0}})},function(t){t.set("scale",{display:!0,offset:!1,reverse:!1,beginAtZero:!1,bounds:"ticks",clip:!0,grace:0,grid:{display:!0,lineWidth:1,drawOnChartArea:!0,drawTicks:!0,tickLength:8,tickWidth:(t,e)=>e.lineWidth,tickColor:(t,e)=>e.color,offset:!1},border:{display:!0,dash:[],dashOffset:0,width:1},title:{display:!1,text:"",padding:{top:4,bottom:4}},ticks:{minRotation:0,maxRotation:50,mirror:!1,textStrokeWidth:0,textStrokeColor:"",padding:3,display:!0,autoSkip:!0,autoSkipPadding:3,labelOffset:0,callback:pi.formatters.values,minor:{},major:{},align:"center",crossAlign:"near",showLabelBackdrop:!1,backdropColor:"rgba(255, 255, 255, 0.75)",backdropPadding:2}}),t.route("scale.ticks","color","","color"),t.route("scale.grid","color","","borderColor"),t.route("scale.border","color","","borderColor"),t.route("scale.title","color","","color"),t.describe("scale",{_fallback:!1,_scriptable:t=>!t.startsWith("before")&&!t.startsWith("after")&&"callback"!==t&&"parser"!==t,_indexable:t=>"borderDash"!==t&&"tickBorderDash"!==t&&"dash"!==t}),t.describe("scales",{_fallback:"scale"}),t.describe("scale.ticks",{_scriptable:t=>"backdropPadding"!==t&&"callback"!==t,_indexable:t=>"backdropPadding"!==t})}]);function yi(t,e,i,s,o){let n=e[o];return n||(n=e[o]=t.measureText(o).width,i.push(o)),n>s&&(s=n),s}function vi(t,e,i,s){let o=(s=s||{}).data=s.data||{},n=s.garbageCollect=s.garbageCollect||[];s.font!==e&&(o=s.data={},n=s.garbageCollect=[],s.font=e),t.save(),t.font=e;let r=0;const a=i.length;let l,h,c,d,u;for(l=0;l<a;l++)if(d=i[l],null==d||Zt(d)){if(Zt(d))for(h=0,c=d.length;h<c;h++)u=d[h],null==u||Zt(u)||(r=yi(t,o,n,r,u))}else r=yi(t,o,n,r,d);t.restore();const p=n.length/2;if(p>i.length){for(l=0;l<p;l++)delete o[n[l]];n.splice(0,p)}return r}function wi(t,e,i){const s=t.currentDevicePixelRatio,o=0!==i?Math.max(i/2,.5):0;return Math.round((e-o)*s)/s+o}function Mi(t,e){(e||t)&&((e=e||t.getContext("2d")).save(),e.resetTransform(),e.clearRect(0,0,t.width,t.height),e.restore())}function ki(t,e,i,s){Si(t,e,i,s,null)}function Si(t,e,i,s,o){let n,r,a,l,h,c,d,u;const p=e.pointStyle,g=e.rotation,f=e.radius;let m=(g||0)*Me;if(p&&"object"==typeof p&&(n=p.toString(),"[object HTMLImageElement]"===n||"[object HTMLCanvasElement]"===n))return t.save(),t.translate(i,s),t.rotate(m),t.drawImage(p,-p.width/2,-p.height/2,p.width,p.height),void t.restore();if(!(isNaN(f)||f<=0)){switch(t.beginPath(),p){default:o?t.ellipse(i,s,o/2,f,0,0,ye):t.arc(i,s,f,0,ye),t.closePath();break;case"triangle":c=o?o/2:f,t.moveTo(i+Math.sin(m)*c,s-Math.cos(m)*f),m+=Ce,t.lineTo(i+Math.sin(m)*c,s-Math.cos(m)*f),m+=Ce,t.lineTo(i+Math.sin(m)*c,s-Math.cos(m)*f),t.closePath();break;case"rectRounded":h=.516*f,l=f-h,r=Math.cos(m+Se)*l,d=Math.cos(m+Se)*(o?o/2-h:l),a=Math.sin(m+Se)*l,u=Math.sin(m+Se)*(o?o/2-h:l),t.arc(i-d,s-a,h,m-_e,m-ke),t.arc(i+u,s-r,h,m-ke,m),t.arc(i+d,s+a,h,m,m+ke),t.arc(i-u,s+r,h,m+ke,m+_e),t.closePath();break;case"rect":if(!g){l=Math.SQRT1_2*f,c=o?o/2:l,t.rect(i-c,s-l,2*c,2*l);break}m+=Se;case"rectRot":d=Math.cos(m)*(o?o/2:f),r=Math.cos(m)*f,a=Math.sin(m)*f,u=Math.sin(m)*(o?o/2:f),t.moveTo(i-d,s-a),t.lineTo(i+u,s-r),t.lineTo(i+d,s+a),t.lineTo(i-u,s+r),t.closePath();break;case"crossRot":m+=Se;case"cross":d=Math.cos(m)*(o?o/2:f),r=Math.cos(m)*f,a=Math.sin(m)*f,u=Math.sin(m)*(o?o/2:f),t.moveTo(i-d,s-a),t.lineTo(i+d,s+a),t.moveTo(i+u,s-r),t.lineTo(i-u,s+r);break;case"star":d=Math.cos(m)*(o?o/2:f),r=Math.cos(m)*f,a=Math.sin(m)*f,u=Math.sin(m)*(o?o/2:f),t.moveTo(i-d,s-a),t.lineTo(i+d,s+a),t.moveTo(i+u,s-r),t.lineTo(i-u,s+r),m+=Se,d=Math.cos(m)*(o?o/2:f),r=Math.cos(m)*f,a=Math.sin(m)*f,u=Math.sin(m)*(o?o/2:f),t.moveTo(i-d,s-a),t.lineTo(i+d,s+a),t.moveTo(i+u,s-r),t.lineTo(i-u,s+r);break;case"line":r=o?o/2:Math.cos(m)*f,a=Math.sin(m)*f,t.moveTo(i-r,s-a),t.lineTo(i+r,s+a);break;case"dash":t.moveTo(i,s),t.lineTo(i+Math.cos(m)*(o?o/2:f),s+Math.sin(m)*f);break;case!1:t.closePath()}t.fill(),e.borderWidth>0&&t.stroke()}}function Ci(t,e,i){return i=i||.5,!e||t&&t.x>e.left-i&&t.x<e.right+i&&t.y>e.top-i&&t.y<e.bottom+i}function Ai(t,e){t.save(),t.beginPath(),t.rect(e.left,e.top,e.right-e.left,e.bottom-e.top),t.clip()}function Pi(t){t.restore()}function Di(t,e,i,s,o){if(!e)return t.lineTo(i.x,i.y);if("middle"===o){const s=(e.x+i.x)/2;t.lineTo(s,e.y),t.lineTo(s,i.y)}else"after"===o!=!!s?t.lineTo(e.x,i.y):t.lineTo(i.x,e.y);t.lineTo(i.x,i.y)}function Ei(t,e,i,s){if(!e)return t.lineTo(i.x,i.y);t.bezierCurveTo(s?e.cp1x:e.cp2x,s?e.cp1y:e.cp2y,s?i.cp2x:i.cp1x,s?i.cp2y:i.cp1y,i.x,i.y)}function Oi(t,e,i,s,o){if(o.strikethrough||o.underline){const n=t.measureText(s),r=e-n.actualBoundingBoxLeft,a=e+n.actualBoundingBoxRight,l=i-n.actualBoundingBoxAscent,h=i+n.actualBoundingBoxDescent,c=o.strikethrough?(l+h)/2:h;t.strokeStyle=t.fillStyle,t.beginPath(),t.lineWidth=o.decorationWidth||2,t.moveTo(r,c),t.lineTo(a,c),t.stroke()}}function Ti(t,e){const i=t.fillStyle;t.fillStyle=e.color,t.fillRect(e.left,e.top,e.width,e.height),t.fillStyle=i}function Ri(t,e,i,s,o,n={}){const r=Zt(e)?e:[e],a=n.strokeWidth>0&&""!==n.strokeColor;let l,h;for(t.save(),t.font=o.string,function(t,e){e.translation&&t.translate(e.translation[0],e.translation[1]),Jt(e.rotation)||t.rotate(e.rotation),e.color&&(t.fillStyle=e.color),e.textAlign&&(t.textAlign=e.textAlign),e.textBaseline&&(t.textBaseline=e.textBaseline)}(t,n),l=0;l<r.length;++l)h=r[l],n.backdrop&&Ti(t,n.backdrop),a&&(n.strokeColor&&(t.strokeStyle=n.strokeColor),Jt(n.strokeWidth)||(t.lineWidth=n.strokeWidth),t.strokeText(h,i,s,n.maxWidth)),t.fillText(h,i,s,n.maxWidth),Oi(t,i,s,h,n),s+=Number(o.lineHeight);t.restore()}function Li(t,e){const{x:i,y:s,w:o,h:n,radius:r}=e;t.arc(i+r.topLeft,s+r.topLeft,r.topLeft,1.5*_e,_e,!0),t.lineTo(i,s+n-r.bottomLeft),t.arc(i+r.bottomLeft,s+n-r.bottomLeft,r.bottomLeft,_e,ke,!0),t.lineTo(i+o-r.bottomRight,s+n),t.arc(i+o-r.bottomRight,s+n-r.bottomRight,r.bottomRight,ke,0,!0),t.lineTo(i+o,s+r.topRight),t.arc(i+o-r.topRight,s+r.topRight,r.topRight,0,-ke,!0),t.lineTo(i+r.topLeft,s)}const $i=/^(normal|(\d+(?:\.\d+)?)(px|em|%)?)$/,Ii=/^(normal|italic|initial|inherit|unset|(oblique( -?[0-9]?[0-9]deg)?))$/;function zi(t,e){const i=(""+t).match($i);if(!i||"normal"===i[1])return 1.2*e;switch(t=+i[2],i[3]){case"px":return t;case"%":t/=100}return e*t}const Fi=t=>+t||0;function Hi(t,e){const i={},s=Qt(e),o=s?Object.keys(e):e,n=Qt(t)?s?i=>ie(t[i],t[e[i]]):e=>t[e]:()=>t;for(const r of o)i[r]=Fi(n(r));return i}function Vi(t){return Hi(t,{top:"y",right:"x",bottom:"y",left:"x"})}function Bi(t){return Hi(t,["topLeft","topRight","bottomLeft","bottomRight"])}function Ni(t){const e=Vi(t);return e.width=e.left+e.right,e.height=e.top+e.bottom,e}function Wi(t,e){t=t||{},e=e||_i.font;let i=ie(t.size,e.size);"string"==typeof i&&(i=parseInt(i,10));let s=ie(t.style,e.style);s&&!(""+s).match(Ii)&&(console.warn('Invalid font style specified: "'+s+'"'),s=void 0);const o={family:ie(t.family,e.family),lineHeight:zi(ie(t.lineHeight,e.lineHeight),i),size:i,style:s,weight:ie(t.weight,e.weight),string:""};return o.string=function(t){return!t||Jt(t.size)||Jt(t.family)?null:(t.style?t.style+" ":"")+(t.weight?t.weight+" ":"")+t.size+"px "+t.family}(o),o}function ji(t,e,i,s){let o,n,r;for(o=0,n=t.length;o<n;++o)if(r=t[o],void 0!==r&&void 0!==r)return r}function Ui(t,e){return Object.assign(Object.create(t),e)}function Yi(t,e=[""],i,s,o=()=>t[0]){const n=i||t;void 0===s&&(s=ss("_fallback",t));const r={[Symbol.toStringTag]:"Object",_cacheable:!0,_scopes:t,_rootScopes:n,_fallback:s,_getTarget:o,override:i=>Yi([i,...t],e,n,s)};return new Proxy(r,{deleteProperty:(e,i)=>(delete e[i],delete e._keys,delete t[0][i],!0),get:(i,s)=>Ji(i,s,()=>function(t,e,i,s){let o;for(const n of e)if(o=ss(Gi(n,t),i),void 0!==o)return Ki(t,o)?es(i,s,t,o):o}(s,e,t,i)),getOwnPropertyDescriptor:(t,e)=>Reflect.getOwnPropertyDescriptor(t._scopes[0],e),getPrototypeOf:()=>Reflect.getPrototypeOf(t[0]),has:(t,e)=>os(t).includes(e),ownKeys:t=>os(t),set(t,e,i){const s=t._storage||(t._storage=o());return t[e]=s[e]=i,delete t._keys,!0}})}function Xi(t,e,i,s){const o={_cacheable:!1,_proxy:t,_context:e,_subProxy:i,_stack:new Set,_descriptors:qi(t,s),setContext:e=>Xi(t,e,i,s),override:o=>Xi(t.override(o),e,i,s)};return new Proxy(o,{deleteProperty:(e,i)=>(delete e[i],delete t[i],!0),get:(t,e,i)=>Ji(t,e,()=>function(t,e,i){const{_proxy:s,_context:o,_subProxy:n,_descriptors:r}=t;let a=s[e];be(a)&&r.isScriptable(e)&&(a=function(t,e,i,s){const{_proxy:o,_context:n,_subProxy:r,_stack:a}=i;if(a.has(t))throw new Error("Recursion detected: "+Array.from(a).join("->")+"->"+t);a.add(t);let l=e(n,r||s);a.delete(t),Ki(t,l)&&(l=es(o._scopes,o,t,l));return l}(e,a,t,i));Zt(a)&&a.length&&(a=function(t,e,i,s){const{_proxy:o,_context:n,_subProxy:r,_descriptors:a}=i;if(void 0!==n.index&&s(t))return e[n.index%e.length];if(Qt(e[0])){const i=e,s=o._scopes.filter(t=>t!==i);e=[];for(const l of i){const i=es(s,o,t,l);e.push(Xi(i,n,r&&r[t],a))}}return e}(e,a,t,r.isIndexable));Ki(e,a)&&(a=Xi(a,o,n&&n[e],r));return a}(t,e,i)),getOwnPropertyDescriptor:(e,i)=>e._descriptors.allKeys?Reflect.has(t,i)?{enumerable:!0,configurable:!0}:void 0:Reflect.getOwnPropertyDescriptor(t,i),getPrototypeOf:()=>Reflect.getPrototypeOf(t),has:(e,i)=>Reflect.has(t,i),ownKeys:()=>Reflect.ownKeys(t),set:(e,i,s)=>(t[i]=s,delete e[i],!0)})}function qi(t,e={scriptable:!0,indexable:!0}){const{_scriptable:i=e.scriptable,_indexable:s=e.indexable,_allKeys:o=e.allKeys}=t;return{allKeys:o,scriptable:i,indexable:s,isScriptable:be(i)?i:()=>i,isIndexable:be(s)?s:()=>s}}const Gi=(t,e)=>t?t+fe(e):e,Ki=(t,e)=>Qt(e)&&"adapters"!==t&&(null===Object.getPrototypeOf(e)||e.constructor===Object);function Ji(t,e,i){if(Object.prototype.hasOwnProperty.call(t,e)||"constructor"===e)return t[e];const s=i();return t[e]=s,s}function Zi(t,e,i){return be(t)?t(e,i):t}const Qi=(t,e)=>!0===t?e:"string"==typeof t?ge(e,t):void 0;function ts(t,e,i,s,o){for(const n of e){const e=Qi(i,n);if(e){t.add(e);const n=Zi(e._fallback,i,o);if(void 0!==n&&n!==i&&n!==s)return n}else if(!1===e&&void 0!==s&&i!==s)return null}return!1}function es(t,e,i,s){const o=e._rootScopes,n=Zi(e._fallback,i,s),r=[...t,...o],a=new Set;a.add(s);let l=is(a,r,i,n||i,s);return null!==l&&((void 0===n||n===i||(l=is(a,r,n,l,s),null!==l))&&Yi(Array.from(a),[""],o,n,()=>function(t,e,i){const s=t._getTarget();e in s||(s[e]={});const o=s[e];if(Zt(o)&&Qt(i))return i;return o||{}}(e,i,s)))}function is(t,e,i,s,o){for(;i;)i=ts(t,e,i,s,o);return i}function ss(t,e){for(const i of e){if(!i)continue;const e=i[t];if(void 0!==e)return e}}function os(t){let e=t._keys;return e||(e=t._keys=function(t){const e=new Set;for(const i of t)for(const t of Object.keys(i).filter(t=>!t.startsWith("_")))e.add(t);return Array.from(e)}(t._scopes)),e}function ns(t,e,i,s){const{iScale:o}=t,{key:n="r"}=this._parsing,r=new Array(s);let a,l,h,c;for(a=0,l=s;a<l;++a)h=a+i,c=e[h],r[a]={r:o.parse(ge(c,n),h)};return r}const rs=Number.EPSILON||1e-14,as=(t,e)=>e<t.length&&!t[e].skip&&t[e],ls=t=>"x"===t?"y":"x";function hs(t,e,i,s){const o=t.skip?e:t,n=e,r=i.skip?e:i,a=ze(n,o),l=ze(r,n);let h=a/(a+l),c=l/(a+l);h=isNaN(h)?0:h,c=isNaN(c)?0:c;const d=s*h,u=s*c;return{previous:{x:n.x-d*(r.x-o.x),y:n.y-d*(r.y-o.y)},next:{x:n.x+u*(r.x-o.x),y:n.y+u*(r.y-o.y)}}}function cs(t,e="x"){const i=ls(e),s=t.length,o=Array(s).fill(0),n=Array(s);let r,a,l,h=as(t,0);for(r=0;r<s;++r)if(a=l,l=h,h=as(t,r+1),l){if(h){const t=h[e]-l[e];o[r]=0!==t?(h[i]-l[i])/t:0}n[r]=a?h?Pe(o[r-1])!==Pe(o[r])?0:(o[r-1]+o[r])/2:o[r-1]:o[r]}!function(t,e,i){const s=t.length;let o,n,r,a,l,h=as(t,0);for(let c=0;c<s-1;++c)l=h,h=as(t,c+1),l&&h&&(De(e[c],0,rs)?i[c]=i[c+1]=0:(o=i[c]/e[c],n=i[c+1]/e[c],a=Math.pow(o,2)+Math.pow(n,2),a<=9||(r=3/Math.sqrt(a),i[c]=o*r*e[c],i[c+1]=n*r*e[c])))}(t,o,n),function(t,e,i="x"){const s=ls(i),o=t.length;let n,r,a,l=as(t,0);for(let h=0;h<o;++h){if(r=a,a=l,l=as(t,h+1),!a)continue;const o=a[i],c=a[s];r&&(n=(o-r[i])/3,a[`cp1${i}`]=o-n,a[`cp1${s}`]=c-n*e[h]),l&&(n=(l[i]-o)/3,a[`cp2${i}`]=o+n,a[`cp2${s}`]=c+n*e[h])}}(t,n,e)}function ds(t,e,i){return Math.max(Math.min(t,i),e)}function us(t,e,i,s,o){let n,r,a,l;if(e.spanGaps&&(t=t.filter(t=>!t.skip)),"monotone"===e.cubicInterpolationMode)cs(t,o);else{let i=s?t[t.length-1]:t[0];for(n=0,r=t.length;n<r;++n)a=t[n],l=hs(i,a,t[Math.min(n+1,r-(s?0:1))%r],e.tension),a.cp1x=l.previous.x,a.cp1y=l.previous.y,a.cp2x=l.next.x,a.cp2y=l.next.y,i=a}e.capBezierPoints&&function(t,e){let i,s,o,n,r,a=Ci(t[0],e);for(i=0,s=t.length;i<s;++i)r=n,n=a,a=i<s-1&&Ci(t[i+1],e),n&&(o=t[i],r&&(o.cp1x=ds(o.cp1x,e.left,e.right),o.cp1y=ds(o.cp1y,e.top,e.bottom)),a&&(o.cp2x=ds(o.cp2x,e.left,e.right),o.cp2y=ds(o.cp2y,e.top,e.bottom)))}(t,i)}function ps(){return"undefined"!=typeof window&&"undefined"!=typeof document}function gs(t){let e=t.parentNode;return e&&"[object ShadowRoot]"===e.toString()&&(e=e.host),e}function fs(t,e,i){let s;return"string"==typeof t?(s=parseInt(t,10),-1!==t.indexOf("%")&&(s=s/100*e.parentNode[i])):s=t,s}const ms=t=>t.ownerDocument.defaultView.getComputedStyle(t,null);const bs=["top","right","bottom","left"];function xs(t,e,i){const s={};i=i?"-"+i:"";for(let o=0;o<4;o++){const n=bs[o];s[n]=parseFloat(t[e+"-"+n+i])||0}return s.width=s.left+s.right,s.height=s.top+s.bottom,s}function _s(t,e){if("native"in t)return t;const{canvas:i,currentDevicePixelRatio:s}=e,o=ms(i),n="border-box"===o.boxSizing,r=xs(o,"padding"),a=xs(o,"border","width"),{x:l,y:h,box:c}=function(t,e){const i=t.touches,s=i&&i.length?i[0]:t,{offsetX:o,offsetY:n}=s;let r,a,l=!1;if(((t,e,i)=>(t>0||e>0)&&(!i||!i.shadowRoot))(o,n,t.target))r=o,a=n;else{const t=e.getBoundingClientRect();r=s.clientX-t.left,a=s.clientY-t.top,l=!0}return{x:r,y:a,box:l}}(t,i),d=r.left+(c&&a.left),u=r.top+(c&&a.top);let{width:p,height:g}=e;return n&&(p-=r.width+a.width,g-=r.height+a.height),{x:Math.round((l-d)/p*i.width/s),y:Math.round((h-u)/g*i.height/s)}}const ys=t=>Math.round(10*t)/10;function vs(t,e,i,s){const o=ms(t),n=xs(o,"margin"),r=fs(o.maxWidth,t,"clientWidth")||we,a=fs(o.maxHeight,t,"clientHeight")||we,l=function(t,e,i){let s,o;if(void 0===e||void 0===i){const n=t&&gs(t);if(n){const t=n.getBoundingClientRect(),r=ms(n),a=xs(r,"border","width"),l=xs(r,"padding");e=t.width-l.width-a.width,i=t.height-l.height-a.height,s=fs(r.maxWidth,n,"clientWidth"),o=fs(r.maxHeight,n,"clientHeight")}else e=t.clientWidth,i=t.clientHeight}return{width:e,height:i,maxWidth:s||we,maxHeight:o||we}}(t,e,i);let{width:h,height:c}=l;if("content-box"===o.boxSizing){const t=xs(o,"border","width"),e=xs(o,"padding");h-=e.width+t.width,c-=e.height+t.height}h=Math.max(0,h-n.width),c=Math.max(0,s?h/s:c-n.height),h=ys(Math.min(h,r,l.maxWidth)),c=ys(Math.min(c,a,l.maxHeight)),h&&!c&&(c=ys(h/2));return(void 0!==e||void 0!==i)&&s&&l.height&&c>l.height&&(c=l.height,h=ys(Math.floor(c*s))),{width:h,height:c}}function ws(t,e,i){const s=e||1,o=ys(t.height*s),n=ys(t.width*s);t.height=ys(t.height),t.width=ys(t.width);const r=t.canvas;return r.style&&(i||!r.style.height&&!r.style.width)&&(r.style.height=`${t.height}px`,r.style.width=`${t.width}px`),(t.currentDevicePixelRatio!==s||r.height!==o||r.width!==n)&&(t.currentDevicePixelRatio=s,r.height=o,r.width=n,t.ctx.setTransform(s,0,0,s,0,0),!0)}const Ms=function(){let t=!1;try{const e={get passive(){return t=!0,!1}};ps()&&(window.addEventListener("test",null,e),window.removeEventListener("test",null,e))}catch(e){}return t}();function ks(t,e){const i=function(t,e){return ms(t).getPropertyValue(e)}(t,e),s=i&&i.match(/^(\d+)(\.\d+)?px$/);return s?+s[1]:void 0}function Ss(t,e,i,s){return{x:t.x+i*(e.x-t.x),y:t.y+i*(e.y-t.y)}}function Cs(t,e,i,s){return{x:t.x+i*(e.x-t.x),y:"middle"===s?i<.5?t.y:e.y:"after"===s?i<1?t.y:e.y:i>0?e.y:t.y}}function As(t,e,i,s){const o={x:t.cp2x,y:t.cp2y},n={x:e.cp1x,y:e.cp1y},r=Ss(t,o,i),a=Ss(o,n,i),l=Ss(n,e,i),h=Ss(r,a,i),c=Ss(a,l,i);return Ss(h,c,i)}function Ps(t,e,i){return t?function(t,e){return{x:i=>t+t+e-i,setWidth(t){e=t},textAlign:t=>"center"===t?t:"right"===t?"left":"right",xPlus:(t,e)=>t-e,leftForLtr:(t,e)=>t-e}}(e,i):{x:t=>t,setWidth(t){},textAlign:t=>t,xPlus:(t,e)=>t+e,leftForLtr:(t,e)=>t}}function Ds(t,e){let i,s;"ltr"!==e&&"rtl"!==e||(i=t.canvas.style,s=[i.getPropertyValue("direction"),i.getPropertyPriority("direction")],i.setProperty("direction",e,"important"),t.prevTextDirection=s)}function Es(t,e){void 0!==e&&(delete t.prevTextDirection,t.canvas.style.setProperty("direction",e[0],e[1]))}function Os(t){return"angle"===t?{between:Ve,compare:Fe,normalize:He}:{between:Ne,compare:(t,e)=>t-e,normalize:t=>t}}function Ts({start:t,end:e,count:i,loop:s,style:o}){return{start:t%i,end:e%i,loop:s&&(e-t+1)%i==0,style:o}}function Rs(t,e,i){if(!i)return[t];const{property:s,start:o,end:n}=i,r=e.length,{compare:a,between:l,normalize:h}=Os(s),{start:c,end:d,loop:u,style:p}=function(t,e,i){const{property:s,start:o,end:n}=i,{between:r,normalize:a}=Os(s),l=e.length;let h,c,{start:d,end:u,loop:p}=t;if(p){for(d+=l,u+=l,h=0,c=l;h<c&&r(a(e[d%l][s]),o,n);++h)d--,u--;d%=l,u%=l}return u<d&&(u+=l),{start:d,end:u,loop:p,style:t.style}}(t,e,i),g=[];let f,m,b,x=!1,_=null;const y=()=>x||l(o,b,f)&&0!==a(o,b),v=()=>!x||0===a(n,f)||l(n,b,f);for(let w=c,M=c;w<=d;++w)m=e[w%r],m.skip||(f=h(m[s]),f!==b&&(x=l(f,o,n),null===_&&y()&&(_=0===a(f,o)?w:M),null!==_&&v()&&(g.push(Ts({start:_,end:w,loop:u,count:r,style:p})),_=null),M=w,b=f));return null!==_&&g.push(Ts({start:_,end:d,loop:u,count:r,style:p})),g}function Ls(t,e){const i=[],s=t.segments;for(let o=0;o<s.length;o++){const n=Rs(s[o],t.points,e);n.length&&i.push(...n)}return i}function $s(t,e,i,s){return s&&s.setContext&&i?function(t,e,i,s){const o=t._chart.getContext(),n=Is(t.options),{_datasetIndex:r,options:{spanGaps:a}}=t,l=i.length,h=[];let c=n,d=e[0].start,u=d;function p(t,e,s,o){const n=a?-1:1;if(t!==e){for(t+=l;i[t%l].skip;)t-=n;for(;i[e%l].skip;)e+=n;t%l!==e%l&&(h.push({start:t%l,end:e%l,loop:s,style:o}),c=o,d=e%l)}}for(const g of e){d=a?d:g.start;let t,e=i[d%l];for(u=d+1;u<=g.end;u++){const n=i[u%l];t=Is(s.setContext(Ui(o,{type:"segment",p0:e,p1:n,p0DataIndex:(u-1)%l,p1DataIndex:u%l,datasetIndex:r}))),zs(t,c)&&p(d,u-1,g.loop,c),e=n,c=t}d<u-1&&p(d,u-1,g.loop,c)}return h}(t,e,i,s):e}function Is(t){return{backgroundColor:t.backgroundColor,borderCapStyle:t.borderCapStyle,borderDash:t.borderDash,borderDashOffset:t.borderDashOffset,borderJoinStyle:t.borderJoinStyle,borderWidth:t.borderWidth,borderColor:t.borderColor}}function zs(t,e){if(!e)return!1;const i=[],s=function(t,e){return ni(e)?(i.includes(e)||i.push(e),i.indexOf(e)):e};return JSON.stringify(t,s)!==JSON.stringify(e,s)}function Fs(t,e,i){return t.options.clip?t[i]:e[i]}function Hs(t,e){const i=e._clip;if(i.disabled)return!1;const s=function(t,e){const{xScale:i,yScale:s}=t;return i&&s?{left:Fs(i,e,"left"),right:Fs(i,e,"right"),top:Fs(s,e,"top"),bottom:Fs(s,e,"bottom")}:e}(e,t.chartArea);return{left:!1===i.left?0:s.left-(!0===i.left?0:i.left),right:!1===i.right?t.width:s.right+(!0===i.right?0:i.right),top:!1===i.top?0:s.top-(!0===i.top?0:i.top),bottom:!1===i.bottom?t.height:s.bottom+(!0===i.bottom?0:i.bottom)}}class Vs{constructor(){this._request=null,this._charts=new Map,this._running=!1,this._lastDate=void 0}_notify(t,e,i,s){const o=e.listeners[s],n=e.duration;o.forEach(s=>s({chart:t,initial:e.initial,numSteps:n,currentStep:Math.min(i-e.start,n)}))}_refresh(){this._request||(this._running=!0,this._request=Ge.call(window,()=>{this._update(),this._request=null,this._running&&this._refresh()}))}_update(t=Date.now()){let e=0;this._charts.forEach((i,s)=>{if(!i.running||!i.items.length)return;const o=i.items;let n,r=o.length-1,a=!1;for(;r>=0;--r)n=o[r],n._active?(n._total>i.duration&&(i.duration=n._total),n.tick(t),a=!0):(o[r]=o[o.length-1],o.pop());a&&(s.draw(),this._notify(s,i,t,"progress")),o.length||(i.running=!1,this._notify(s,i,t,"complete"),i.initial=!1),e+=o.length}),this._lastDate=t,0===e&&(this._running=!1)}_getAnims(t){const e=this._charts;let i=e.get(t);return i||(i={running:!1,initial:!0,items:[],listeners:{complete:[],progress:[]}},e.set(t,i)),i}listen(t,e,i){this._getAnims(t).listeners[e].push(i)}add(t,e){e&&e.length&&this._getAnims(t).items.push(...e)}has(t){return this._getAnims(t).items.length>0}start(t){const e=this._charts.get(t);e&&(e.running=!0,e.start=Date.now(),e.duration=e.items.reduce((t,e)=>Math.max(t,e._duration),0),this._refresh())}running(t){if(!this._running)return!1;const e=this._charts.get(t);return!!(e&&e.running&&e.items.length)}stop(t){const e=this._charts.get(t);if(!e||!e.items.length)return;const i=e.items;let s=i.length-1;for(;s>=0;--s)i[s].cancel();e.items=[],this._notify(t,e,Date.now(),"complete")}remove(t){return this._charts.delete(t)}}var Bs=new Vs;const Ns="transparent",Ws={boolean:(t,e,i)=>i>.5?e:t,color(t,e,i){const s=ri(t||Ns),o=s.valid&&ri(e||Ns);return o&&o.valid?o.mix(s,i).hexString():e},number:(t,e,i)=>t+(e-t)*i};class js{constructor(t,e,i,s){const o=e[i];s=ji([t.to,s,o,t.from]);const n=ji([t.from,o,s]);this._active=!0,this._fn=t.fn||Ws[t.type||typeof n],this._easing=oi[t.easing]||oi.linear,this._start=Math.floor(Date.now()+(t.delay||0)),this._duration=this._total=Math.floor(t.duration),this._loop=!!t.loop,this._target=e,this._prop=i,this._from=n,this._to=s,this._promises=void 0}active(){return this._active}update(t,e,i){if(this._active){this._notify(!1);const s=this._target[this._prop],o=i-this._start,n=this._duration-o;this._start=i,this._duration=Math.floor(Math.max(n,t.duration)),this._total+=o,this._loop=!!t.loop,this._to=ji([t.to,e,s,t.from]),this._from=ji([t.from,s,e])}}cancel(){this._active&&(this.tick(Date.now()),this._active=!1,this._notify(!1))}tick(t){const e=t-this._start,i=this._duration,s=this._prop,o=this._from,n=this._loop,r=this._to;let a;if(this._active=o!==r&&(n||e<i),!this._active)return this._target[s]=r,void this._notify(!0);e<0?this._target[s]=o:(a=e/i%2,a=n&&a>1?2-a:a,a=this._easing(Math.min(1,Math.max(0,a))),this._target[s]=this._fn(o,r,a))}wait(){const t=this._promises||(this._promises=[]);return new Promise((e,i)=>{t.push({res:e,rej:i})})}_notify(t){const e=t?"res":"rej",i=this._promises||[];for(let s=0;s<i.length;s++)i[s][e]()}}class Us{constructor(t,e){this._chart=t,this._properties=new Map,this.configure(e)}configure(t){if(!Qt(t))return;const e=Object.keys(_i.animation),i=this._properties;Object.getOwnPropertyNames(t).forEach(s=>{const o=t[s];if(!Qt(o))return;const n={};for(const t of e)n[t]=o[t];(Zt(o.properties)&&o.properties||[s]).forEach(t=>{t!==s&&i.has(t)||i.set(t,n)})})}_animateOptions(t,e){const i=e.options,s=function(t,e){if(!e)return;let i=t.options;if(!i)return void(t.options=e);i.$shared&&(t.options=i=Object.assign({},i,{$shared:!1,$animations:{}}));return i}(t,i);if(!s)return[];const o=this._createAnimations(s,i);return i.$shared&&function(t,e){const i=[],s=Object.keys(e);for(let o=0;o<s.length;o++){const e=t[s[o]];e&&e.active()&&i.push(e.wait())}return Promise.all(i)}(t.options.$animations,i).then(()=>{t.options=i},()=>{}),o}_createAnimations(t,e){const i=this._properties,s=[],o=t.$animations||(t.$animations={}),n=Object.keys(e),r=Date.now();let a;for(a=n.length-1;a>=0;--a){const l=n[a];if("$"===l.charAt(0))continue;if("options"===l){s.push(...this._animateOptions(t,e));continue}const h=e[l];let c=o[l];const d=i.get(l);if(c){if(d&&c.active()){c.update(d,h,r);continue}c.cancel()}d&&d.duration?(o[l]=c=new js(d,t,l,h),s.push(c)):t[l]=h}return s}update(t,e){if(0===this._properties.size)return void Object.assign(t,e);const i=this._createAnimations(t,e);return i.length?(Bs.add(this._chart,i),!0):void 0}}function Ys(t,e){const i=t&&t.options||{},s=i.reverse,o=void 0===i.min?e:0,n=void 0===i.max?e:0;return{start:s?n:o,end:s?o:n}}function Xs(t,e){const i=[],s=t._getSortedDatasetMetas(e);let o,n;for(o=0,n=s.length;o<n;++o)i.push(s[o].index);return i}function qs(t,e,i,s={}){const o=t.keys,n="single"===s.mode;let r,a,l,h;if(null===e)return;let c=!1;for(r=0,a=o.length;r<a;++r){if(l=+o[r],l===i){if(c=!0,s.all)continue;break}h=t.values[l],te(h)&&(n||0===e||Pe(e)===Pe(h))&&(e+=h)}return c||s.all?e:0}function Gs(t,e){const i=t&&t.options.stacked;return i||void 0===i&&void 0!==e.stack}function Ks(t,e,i){const s=t[e]||(t[e]={});return s[i]||(s[i]={})}function Js(t,e,i,s){for(const o of e.getMatchingVisibleMetas(s).reverse()){const e=t[o.index];if(i&&e>0||!i&&e<0)return o.index}return null}function Zs(t,e){const{chart:i,_cachedMeta:s}=t,o=i._stacks||(i._stacks={}),{iScale:n,vScale:r,index:a}=s,l=n.axis,h=r.axis,c=function(t,e,i){return`${t.id}.${e.id}.${i.stack||i.type}`}(n,r,s),d=e.length;let u;for(let p=0;p<d;++p){const t=e[p],{[l]:i,[h]:n}=t;u=(t._stacks||(t._stacks={}))[h]=Ks(o,c,i),u[a]=n,u._top=Js(u,r,!0,s.type),u._bottom=Js(u,r,!1,s.type);(u._visualValues||(u._visualValues={}))[a]=n}}function Qs(t,e){const i=t.scales;return Object.keys(i).filter(t=>i[t].axis===e).shift()}function to(t,e){const i=t.controller.index,s=t.vScale&&t.vScale.axis;if(s){e=e||t._parsed;for(const t of e){const e=t._stacks;if(!e||void 0===e[s]||void 0===e[s][i])return;delete e[s][i],void 0!==e[s]._visualValues&&void 0!==e[s]._visualValues[i]&&delete e[s]._visualValues[i]}}}const eo=t=>"reset"===t||"none"===t,io=(t,e)=>e?t:Object.assign({},t);class so{constructor(t,e){this.chart=t,this._ctx=t.ctx,this.index=e,this._cachedDataOpts={},this._cachedMeta=this.getMeta(),this._type=this._cachedMeta.type,this.options=void 0,this._parsing=!1,this._data=void 0,this._objectData=void 0,this._sharedOptions=void 0,this._drawStart=void 0,this._drawCount=void 0,this.enableOptionSharing=!1,this.supportsDecimation=!1,this.$context=void 0,this._syncList=[],this.datasetElementType=new.target.datasetElementType,this.dataElementType=new.target.dataElementType,this.initialize()}initialize(){const t=this._cachedMeta;this.configure(),this.linkScales(),t._stacked=Gs(t.vScale,t),this.addElements(),this.options.fill&&!this.chart.isPluginEnabled("filler")&&console.warn("Tried to use the 'fill' option without the 'Filler' plugin enabled. Please import and register the 'Filler' plugin and make sure it is not disabled in the options")}updateIndex(t){this.index!==t&&to(this._cachedMeta),this.index=t}linkScales(){const t=this.chart,e=this._cachedMeta,i=this.getDataset(),s=(t,e,i,s)=>"x"===t?e:"r"===t?s:i,o=e.xAxisID=ie(i.xAxisID,Qs(t,"x")),n=e.yAxisID=ie(i.yAxisID,Qs(t,"y")),r=e.rAxisID=ie(i.rAxisID,Qs(t,"r")),a=e.indexAxis,l=e.iAxisID=s(a,o,n,r),h=e.vAxisID=s(a,n,o,r);e.xScale=this.getScaleForId(o),e.yScale=this.getScaleForId(n),e.rScale=this.getScaleForId(r),e.iScale=this.getScaleForId(l),e.vScale=this.getScaleForId(h)}getDataset(){return this.chart.data.datasets[this.index]}getMeta(){return this.chart.getDatasetMeta(this.index)}getScaleForId(t){return this.chart.scales[t]}_getOtherScale(t){const e=this._cachedMeta;return t===e.iScale?e.vScale:e.iScale}reset(){this._update("reset")}_destroy(){const t=this._cachedMeta;this._data&&Xe(this._data,this),t._stacked&&to(t)}_dataCheck(){const t=this.getDataset(),e=t.data||(t.data=[]),i=this._data;if(Qt(e)){const t=this._cachedMeta;this._data=function(t,e){const{iScale:i,vScale:s}=e,o="x"===i.axis?"x":"y",n="x"===s.axis?"x":"y",r=Object.keys(t),a=new Array(r.length);let l,h,c;for(l=0,h=r.length;l<h;++l)c=r[l],a[l]={[o]:c,[n]:t[c]};return a}(e,t)}else if(i!==e){if(i){Xe(i,this);const t=this._cachedMeta;to(t),t._parsed=[]}e&&Object.isExtensible(e)&&(o=this,(s=e)._chartjs?s._chartjs.listeners.push(o):(Object.defineProperty(s,"_chartjs",{configurable:!0,enumerable:!1,value:{listeners:[o]}}),Ye.forEach(t=>{const e="_onData"+fe(t),i=s[t];Object.defineProperty(s,t,{configurable:!0,enumerable:!1,value(...t){const o=i.apply(this,t);return s._chartjs.listeners.forEach(i=>{"function"==typeof i[e]&&i[e](...t)}),o}})}))),this._syncList=[],this._data=e}var s,o}addElements(){const t=this._cachedMeta;this._dataCheck(),this.datasetElementType&&(t.dataset=new this.datasetElementType)}buildOrUpdateElements(t){const e=this._cachedMeta,i=this.getDataset();let s=!1;this._dataCheck();const o=e._stacked;e._stacked=Gs(e.vScale,e),e.stack!==i.stack&&(s=!0,to(e),e.stack=i.stack),this._resyncElements(t),(s||o!==e._stacked)&&(Zs(this,e._parsed),e._stacked=Gs(e.vScale,e))}configure(){const t=this.chart.config,e=t.datasetScopeKeys(this._type),i=t.getOptionScopes(this.getDataset(),e,!0);this.options=t.createResolver(i,this.getContext()),this._parsing=this.options.parsing,this._cachedDataOpts={}}parse(t,e){const{_cachedMeta:i,_data:s}=this,{iScale:o,_stacked:n}=i,r=o.axis;let a,l,h,c=0===t&&e===s.length||i._sorted,d=t>0&&i._parsed[t-1];if(!1===this._parsing)i._parsed=s,i._sorted=!0,h=s;else{h=Zt(s[t])?this.parseArrayData(i,s,t,e):Qt(s[t])?this.parseObjectData(i,s,t,e):this.parsePrimitiveData(i,s,t,e);const o=()=>null===l[r]||d&&l[r]<d[r];for(a=0;a<e;++a)i._parsed[a+t]=l=h[a],c&&(o()&&(c=!1),d=l);i._sorted=c}n&&Zs(this,h)}parsePrimitiveData(t,e,i,s){const{iScale:o,vScale:n}=t,r=o.axis,a=n.axis,l=o.getLabels(),h=o===n,c=new Array(s);let d,u,p;for(d=0,u=s;d<u;++d)p=d+i,c[d]={[r]:h||o.parse(l[p],p),[a]:n.parse(e[p],p)};return c}parseArrayData(t,e,i,s){const{xScale:o,yScale:n}=t,r=new Array(s);let a,l,h,c;for(a=0,l=s;a<l;++a)h=a+i,c=e[h],r[a]={x:o.parse(c[0],h),y:n.parse(c[1],h)};return r}parseObjectData(t,e,i,s){const{xScale:o,yScale:n}=t,{xAxisKey:r="x",yAxisKey:a="y"}=this._parsing,l=new Array(s);let h,c,d,u;for(h=0,c=s;h<c;++h)d=h+i,u=e[d],l[h]={x:o.parse(ge(u,r),d),y:n.parse(ge(u,a),d)};return l}getParsed(t){return this._cachedMeta._parsed[t]}getDataElement(t){return this._cachedMeta.data[t]}applyStack(t,e,i){const s=this.chart,o=this._cachedMeta,n=e[t.axis];return qs({keys:Xs(s,!0),values:e._stacks[t.axis]._visualValues},n,o.index,{mode:i})}updateRangeFromParsed(t,e,i,s){const o=i[e.axis];let n=null===o?NaN:o;const r=s&&i._stacks[e.axis];s&&r&&(s.values=r,n=qs(s,o,this._cachedMeta.index)),t.min=Math.min(t.min,n),t.max=Math.max(t.max,n)}getMinMax(t,e){const i=this._cachedMeta,s=i._parsed,o=i._sorted&&t===i.iScale,n=s.length,r=this._getOtherScale(t),a=((t,e,i)=>t&&!e.hidden&&e._stacked&&{keys:Xs(i,!0),values:null})(e,i,this.chart),l={min:Number.POSITIVE_INFINITY,max:Number.NEGATIVE_INFINITY},{min:h,max:c}=function(t){const{min:e,max:i,minDefined:s,maxDefined:o}=t.getUserBounds();return{min:s?e:Number.NEGATIVE_INFINITY,max:o?i:Number.POSITIVE_INFINITY}}(r);let d,u;function p(){u=s[d];const e=u[r.axis];return!te(u[t.axis])||h>e||c<e}for(d=0;d<n&&(p()||(this.updateRangeFromParsed(l,t,u,a),!o));++d);if(o)for(d=n-1;d>=0;--d)if(!p()){this.updateRangeFromParsed(l,t,u,a);break}return l}getAllParsedValues(t){const e=this._cachedMeta._parsed,i=[];let s,o,n;for(s=0,o=e.length;s<o;++s)n=e[s][t.axis],te(n)&&i.push(n);return i}getMaxOverflow(){return!1}getLabelAndValue(t){const e=this._cachedMeta,i=e.iScale,s=e.vScale,o=this.getParsed(t);return{label:i?""+i.getLabelForValue(o[i.axis]):"",value:s?""+s.getLabelForValue(o[s.axis]):""}}_update(t){const e=this._cachedMeta;this.update(t||"default"),e._clip=function(t){let e,i,s,o;return Qt(t)?(e=t.top,i=t.right,s=t.bottom,o=t.left):e=i=s=o=t,{top:e,right:i,bottom:s,left:o,disabled:!1===t}}(ie(this.options.clip,function(t,e,i){if(!1===i)return!1;const s=Ys(t,i),o=Ys(e,i);return{top:o.end,right:s.end,bottom:o.start,left:s.start}}(e.xScale,e.yScale,this.getMaxOverflow())))}update(t){}draw(){const t=this._ctx,e=this.chart,i=this._cachedMeta,s=i.data||[],o=e.chartArea,n=[],r=this._drawStart||0,a=this._drawCount||s.length-r,l=this.options.drawActiveElementsOnTop;let h;for(i.dataset&&i.dataset.draw(t,o,r,a),h=r;h<r+a;++h){const e=s[h];e.hidden||(e.active&&l?n.push(e):e.draw(t,o))}for(h=0;h<n.length;++h)n[h].draw(t,o)}getStyle(t,e){const i=e?"active":"default";return void 0===t&&this._cachedMeta.dataset?this.resolveDatasetElementOptions(i):this.resolveDataElementOptions(t||0,i)}getContext(t,e,i){const s=this.getDataset();let o;if(t>=0&&t<this._cachedMeta.data.length){const e=this._cachedMeta.data[t];o=e.$context||(e.$context=function(t,e,i){return Ui(t,{active:!1,dataIndex:e,parsed:void 0,raw:void 0,element:i,index:e,mode:"default",type:"data"})}(this.getContext(),t,e)),o.parsed=this.getParsed(t),o.raw=s.data[t],o.index=o.dataIndex=t}else o=this.$context||(this.$context=function(t,e){return Ui(t,{active:!1,dataset:void 0,datasetIndex:e,index:e,mode:"default",type:"dataset"})}(this.chart.getContext(),this.index)),o.dataset=s,o.index=o.datasetIndex=this.index;return o.active=!!e,o.mode=i,o}resolveDatasetElementOptions(t){return this._resolveElementOptions(this.datasetElementType.id,t)}resolveDataElementOptions(t,e){return this._resolveElementOptions(this.dataElementType.id,e,t)}_resolveElementOptions(t,e="default",i){const s="active"===e,o=this._cachedDataOpts,n=t+"-"+e,r=o[n],a=this.enableOptionSharing&&me(i);if(r)return io(r,a);const l=this.chart.config,h=l.datasetElementScopeKeys(this._type,t),c=s?[`${t}Hover`,"hover",t,""]:[t,""],d=l.getOptionScopes(this.getDataset(),h),u=Object.keys(_i.elements[t]),p=l.resolveNamedOptions(d,u,()=>this.getContext(i,s,e),c);return p.$shared&&(p.$shared=a,o[n]=Object.freeze(io(p,a))),p}_resolveAnimations(t,e,i){const s=this.chart,o=this._cachedDataOpts,n=`animation-${e}`,r=o[n];if(r)return r;let a;if(!1!==s.options.animation){const s=this.chart.config,o=s.datasetAnimationScopeKeys(this._type,e),n=s.getOptionScopes(this.getDataset(),o);a=s.createResolver(n,this.getContext(t,i,e))}const l=new Us(s,a&&a.animations);return a&&a._cacheable&&(o[n]=Object.freeze(l)),l}getSharedOptions(t){if(t.$shared)return this._sharedOptions||(this._sharedOptions=Object.assign({},t))}includeOptions(t,e){return!e||eo(t)||this.chart._animationsDisabled}_getSharedOptions(t,e){const i=this.resolveDataElementOptions(t,e),s=this._sharedOptions,o=this.getSharedOptions(i),n=this.includeOptions(e,o)||o!==s;return this.updateSharedOptions(o,e,i),{sharedOptions:o,includeOptions:n}}updateElement(t,e,i,s){eo(s)?Object.assign(t,i):this._resolveAnimations(e,s).update(t,i)}updateSharedOptions(t,e,i){t&&!eo(e)&&this._resolveAnimations(void 0,e).update(t,i)}_setStyle(t,e,i,s){t.active=s;const o=this.getStyle(e,s);this._resolveAnimations(e,i,s).update(t,{options:!s&&this.getSharedOptions(o)||o})}removeHoverStyle(t,e,i){this._setStyle(t,i,"active",!1)}setHoverStyle(t,e,i){this._setStyle(t,i,"active",!0)}_removeDatasetHoverStyle(){const t=this._cachedMeta.dataset;t&&this._setStyle(t,void 0,"active",!1)}_setDatasetHoverStyle(){const t=this._cachedMeta.dataset;t&&this._setStyle(t,void 0,"active",!0)}_resyncElements(t){const e=this._data,i=this._cachedMeta.data;for(const[r,a,l]of this._syncList)this[r](a,l);this._syncList=[];const s=i.length,o=e.length,n=Math.min(o,s);n&&this.parse(0,n),o>s?this._insertElements(s,o-s,t):o<s&&this._removeElements(o,s-o)}_insertElements(t,e,i=!0){const s=this._cachedMeta,o=s.data,n=t+e;let r;const a=t=>{for(t.length+=e,r=t.length-1;r>=n;r--)t[r]=t[r-e]};for(a(o),r=t;r<n;++r)o[r]=new this.dataElementType;this._parsing&&a(s._parsed),this.parse(t,e),i&&this.updateElements(o,t,e,"reset")}updateElements(t,e,i,s){}_removeElements(t,e){const i=this._cachedMeta;if(this._parsing){const s=i._parsed.splice(t,e);i._stacked&&to(i,s)}i.data.splice(t,e)}_sync(t){if(this._parsing)this._syncList.push(t);else{const[e,i,s]=t;this[e](i,s)}this.chart._dataChanges.push([this.index,...t])}_onDataPush(){const t=arguments.length;this._sync(["_insertElements",this.getDataset().data.length-t,t])}_onDataPop(){this._sync(["_removeElements",this._cachedMeta.data.length-1,1])}_onDataShift(){this._sync(["_removeElements",0,1])}_onDataSplice(t,e){e&&this._sync(["_removeElements",t,e]);const i=arguments.length-2;i&&this._sync(["_insertElements",t,i])}_onDataUnshift(){this._sync(["_insertElements",0,arguments.length])}}function oo(t){const e=t.iScale,i=function(t,e){if(!t._cache.$bar){const i=t.getMatchingVisibleMetas(e);let s=[];for(let e=0,o=i.length;e<o;e++)s=s.concat(i[e].controller.getAllParsedValues(t));t._cache.$bar=qe(s.sort((t,e)=>t-e))}return t._cache.$bar}(e,t.type);let s,o,n,r,a=e._length;const l=()=>{32767!==n&&-32768!==n&&(me(r)&&(a=Math.min(a,Math.abs(n-r)||a)),r=n)};for(s=0,o=i.length;s<o;++s)n=e.getPixelForValue(i[s]),l();for(r=void 0,s=0,o=e.ticks.length;s<o;++s)n=e.getPixelForTick(s),l();return a}function no(t,e,i,s){return Zt(t)?function(t,e,i,s){const o=i.parse(t[0],s),n=i.parse(t[1],s),r=Math.min(o,n),a=Math.max(o,n);let l=r,h=a;Math.abs(r)>Math.abs(a)&&(l=a,h=r),e[i.axis]=h,e._custom={barStart:l,barEnd:h,start:o,end:n,min:r,max:a}}(t,e,i,s):e[i.axis]=i.parse(t,s),e}function ro(t,e,i,s){const o=t.iScale,n=t.vScale,r=o.getLabels(),a=o===n,l=[];let h,c,d,u;for(h=i,c=i+s;h<c;++h)u=e[h],d={},d[o.axis]=a||o.parse(r[h],h),l.push(no(u,d,n,h));return l}function ao(t){return t&&void 0!==t.barStart&&void 0!==t.barEnd}function lo(t,e,i,s){let o=e.borderSkipped;const n={};if(!o)return void(t.borderSkipped=n);if(!0===o)return void(t.borderSkipped={top:!0,right:!0,bottom:!0,left:!0});const{start:r,end:a,reverse:l,top:h,bottom:c}=function(t){let e,i,s,o,n;return t.horizontal?(e=t.base>t.x,i="left",s="right"):(e=t.base<t.y,i="bottom",s="top"),e?(o="end",n="start"):(o="start",n="end"),{start:i,end:s,reverse:e,top:o,bottom:n}}(t);"middle"===o&&i&&(t.enableBorderRadius=!0,(i._top||0)===s?o=h:(i._bottom||0)===s?o=c:(n[ho(c,r,a,l)]=!0,o=h)),n[ho(o,r,a,l)]=!0,t.borderSkipped=n}function ho(t,e,i,s){var o,n,r;return s?(r=i,t=co(t=(o=t)===(n=e)?r:o===r?n:o,i,e)):t=co(t,e,i),t}function co(t,e,i){return"start"===t?e:"end"===t?i:t}function uo(t,{inflateAmount:e},i){t.inflateAmount="auto"===e?1===i?.33:0:e}s(so,"defaults",{}),s(so,"datasetElementType",null),s(so,"dataElementType",null);class po extends so{parsePrimitiveData(t,e,i,s){return ro(t,e,i,s)}parseArrayData(t,e,i,s){return ro(t,e,i,s)}parseObjectData(t,e,i,s){const{iScale:o,vScale:n}=t,{xAxisKey:r="x",yAxisKey:a="y"}=this._parsing,l="x"===o.axis?r:a,h="x"===n.axis?r:a,c=[];let d,u,p,g;for(d=i,u=i+s;d<u;++d)g=e[d],p={},p[o.axis]=o.parse(ge(g,l),d),c.push(no(ge(g,h),p,n,d));return c}updateRangeFromParsed(t,e,i,s){super.updateRangeFromParsed(t,e,i,s);const o=i._custom;o&&e===this._cachedMeta.vScale&&(t.min=Math.min(t.min,o.min),t.max=Math.max(t.max,o.max))}getMaxOverflow(){return 0}getLabelAndValue(t){const e=this._cachedMeta,{iScale:i,vScale:s}=e,o=this.getParsed(t),n=o._custom,r=ao(n)?"["+n.start+", "+n.end+"]":""+s.getLabelForValue(o[s.axis]);return{label:""+i.getLabelForValue(o[i.axis]),value:r}}initialize(){this.enableOptionSharing=!0,super.initialize();this._cachedMeta.stack=this.getDataset().stack}update(t){const e=this._cachedMeta;this.updateElements(e.data,0,e.data.length,t)}updateElements(t,e,i,s){const o="reset"===s,{index:n,_cachedMeta:{vScale:r}}=this,a=r.getBasePixel(),l=r.isHorizontal(),h=this._getRuler(),{sharedOptions:c,includeOptions:d}=this._getSharedOptions(e,s);for(let u=e;u<e+i;u++){const e=this.getParsed(u),i=o||Jt(e[r.axis])?{base:a,head:a}:this._calculateBarValuePixels(u),p=this._calculateBarIndexPixels(u,h),g=(e._stacks||{})[r.axis],f={horizontal:l,base:i.base,enableBorderRadius:!g||ao(e._custom)||n===g._top||n===g._bottom,x:l?i.head:p.center,y:l?p.center:i.head,height:l?p.size:Math.abs(i.size),width:l?Math.abs(i.size):p.size};d&&(f.options=c||this.resolveDataElementOptions(u,t[u].active?"active":s));const m=f.options||t[u].options;lo(f,m,g,n),uo(f,m,h.ratio),this.updateElement(t[u],u,f,s)}}_getStacks(t,e){const{iScale:i}=this._cachedMeta,s=i.getMatchingVisibleMetas(this._type).filter(t=>t.controller.options.grouped),o=i.options.stacked,n=[],r=this._cachedMeta.controller.getParsed(e),a=r&&r[i.axis],l=t=>{const e=t._parsed.find(t=>t[i.axis]===a),s=e&&e[t.vScale.axis];if(Jt(s)||isNaN(s))return!0};for(const h of s)if((void 0===e||!l(h))&&((!1===o||-1===n.indexOf(h.stack)||void 0===o&&void 0===h.stack)&&n.push(h.stack),h.index===t))break;return n.length||n.push(void 0),n}_getStackCount(t){return this._getStacks(void 0,t).length}_getAxisCount(){return this._getAxis().length}getFirstScaleIdForIndexAxis(){const t=this.chart.scales,e=this.chart.options.indexAxis;return Object.keys(t).filter(i=>t[i].axis===e).shift()}_getAxis(){const t={},e=this.getFirstScaleIdForIndexAxis();for(const i of this.chart.data.datasets)t[ie("x"===this.chart.options.indexAxis?i.xAxisID:i.yAxisID,e)]=!0;return Object.keys(t)}_getStackIndex(t,e,i){const s=this._getStacks(t,i),o=void 0!==e?s.indexOf(e):-1;return-1===o?s.length-1:o}_getRuler(){const t=this.options,e=this._cachedMeta,i=e.iScale,s=[];let o,n;for(o=0,n=e.data.length;o<n;++o)s.push(i.getPixelForValue(this.getParsed(o)[i.axis],o));const r=t.barThickness;return{min:r||oo(e),pixels:s,start:i._startPixel,end:i._endPixel,stackCount:this._getStackCount(),scale:i,grouped:t.grouped,ratio:r?1:t.categoryPercentage*t.barPercentage}}_calculateBarValuePixels(t){const{_cachedMeta:{vScale:e,_stacked:i,index:s},options:{base:o,minBarLength:n}}=this,r=o||0,a=this.getParsed(t),l=a._custom,h=ao(l);let c,d,u=a[e.axis],p=0,g=i?this.applyStack(e,a,i):u;g!==u&&(p=g-u,g=u),h&&(u=l.barStart,g=l.barEnd-l.barStart,0!==u&&Pe(u)!==Pe(l.barEnd)&&(p=0),p+=u);const f=Jt(o)||h?p:o;let m=e.getPixelForValue(f);if(c=this.chart.getDataVisibility(t)?e.getPixelForValue(p+g):m,d=c-m,Math.abs(d)<n){d=function(t,e,i){return 0!==t?Pe(t):(e.isHorizontal()?1:-1)*(e.min>=i?1:-1)}(d,e,r)*n,u===r&&(m-=d/2);const t=e.getPixelForDecimal(0),o=e.getPixelForDecimal(1),l=Math.min(t,o),p=Math.max(t,o);m=Math.max(Math.min(m,p),l),c=m+d,i&&!h&&(a._stacks[e.axis]._visualValues[s]=e.getValueForPixel(c)-e.getValueForPixel(m))}if(m===e.getPixelForValue(r)){const t=Pe(d)*e.getLineWidthForValue(r)/2;m+=t,d-=t}return{size:d,base:m,head:c,center:c+d/2}}_calculateBarIndexPixels(t,e){const i=e.scale,s=this.options,o=s.skipNull,n=ie(s.maxBarThickness,1/0);let r,a;const l=this._getAxisCount();if(e.grouped){const i=o?this._getStackCount(t):e.stackCount,h="flex"===s.barThickness?function(t,e,i,s){const o=e.pixels,n=o[t];let r=t>0?o[t-1]:null,a=t<o.length-1?o[t+1]:null;const l=i.categoryPercentage;null===r&&(r=n-(null===a?e.end-e.start:a-n)),null===a&&(a=n+n-r);const h=n-(n-Math.min(r,a))/2*l;return{chunk:Math.abs(a-r)/2*l/s,ratio:i.barPercentage,start:h}}(t,e,s,i*l):function(t,e,i,s){const o=i.barThickness;let n,r;return Jt(o)?(n=e.min*i.categoryPercentage,r=i.barPercentage):(n=o*s,r=1),{chunk:n/s,ratio:r,start:e.pixels[t]-n/2}}(t,e,s,i*l),c="x"===this.chart.options.indexAxis?this.getDataset().xAxisID:this.getDataset().yAxisID,d=this._getAxis().indexOf(ie(c,this.getFirstScaleIdForIndexAxis())),u=this._getStackIndex(this.index,this._cachedMeta.stack,o?t:void 0)+d;r=h.start+h.chunk*u+h.chunk/2,a=Math.min(n,h.chunk*h.ratio)}else r=i.getPixelForValue(this.getParsed(t)[i.axis],t),a=Math.min(n,e.min*e.ratio);return{base:r-a/2,head:r+a/2,center:r,size:a}}draw(){const t=this._cachedMeta,e=t.vScale,i=t.data,s=i.length;let o=0;for(;o<s;++o)null===this.getParsed(o)[e.axis]||i[o].hidden||i[o].draw(this._ctx)}}s(po,"id","bar"),s(po,"defaults",{datasetElementType:!1,dataElementType:"bar",categoryPercentage:.8,barPercentage:.9,grouped:!0,animations:{numbers:{type:"number",properties:["x","y","base","width","height"]}}}),s(po,"overrides",{scales:{_index_:{type:"category",offset:!0,grid:{offset:!0}},_value_:{type:"linear",beginAtZero:!0}}});class go extends so{initialize(){this.enableOptionSharing=!0,super.initialize()}parsePrimitiveData(t,e,i,s){const o=super.parsePrimitiveData(t,e,i,s);for(let n=0;n<o.length;n++)o[n]._custom=this.resolveDataElementOptions(n+i).radius;return o}parseArrayData(t,e,i,s){const o=super.parseArrayData(t,e,i,s);for(let n=0;n<o.length;n++){const t=e[i+n];o[n]._custom=ie(t[2],this.resolveDataElementOptions(n+i).radius)}return o}parseObjectData(t,e,i,s){const o=super.parseObjectData(t,e,i,s);for(let n=0;n<o.length;n++){const t=e[i+n];o[n]._custom=ie(t&&t.r&&+t.r,this.resolveDataElementOptions(n+i).radius)}return o}getMaxOverflow(){const t=this._cachedMeta.data;let e=0;for(let i=t.length-1;i>=0;--i)e=Math.max(e,t[i].size(this.resolveDataElementOptions(i))/2);return e>0&&e}getLabelAndValue(t){const e=this._cachedMeta,i=this.chart.data.labels||[],{xScale:s,yScale:o}=e,n=this.getParsed(t),r=s.getLabelForValue(n.x),a=o.getLabelForValue(n.y),l=n._custom;return{label:i[t]||"",value:"("+r+", "+a+(l?", "+l:"")+")"}}update(t){const e=this._cachedMeta.data;this.updateElements(e,0,e.length,t)}updateElements(t,e,i,s){const o="reset"===s,{iScale:n,vScale:r}=this._cachedMeta,{sharedOptions:a,includeOptions:l}=this._getSharedOptions(e,s),h=n.axis,c=r.axis;for(let d=e;d<e+i;d++){const e=t[d],i=!o&&this.getParsed(d),u={},p=u[h]=o?n.getPixelForDecimal(.5):n.getPixelForValue(i[h]),g=u[c]=o?r.getBasePixel():r.getPixelForValue(i[c]);u.skip=isNaN(p)||isNaN(g),l&&(u.options=a||this.resolveDataElementOptions(d,e.active?"active":s),o&&(u.options.radius=0)),this.updateElement(e,d,u,s)}}resolveDataElementOptions(t,e){const i=this.getParsed(t);let s=super.resolveDataElementOptions(t,e);s.$shared&&(s=Object.assign({},s,{$shared:!1}));const o=s.radius;return"active"!==e&&(s.radius=0),s.radius+=ie(i&&i._custom,o),s}}s(go,"id","bubble"),s(go,"defaults",{datasetElementType:!1,dataElementType:"point",animations:{numbers:{type:"number",properties:["x","y","borderWidth","radius"]}}}),s(go,"overrides",{scales:{x:{type:"linear"},y:{type:"linear"}}});class fo extends so{constructor(t,e){super(t,e),this.enableOptionSharing=!0,this.innerRadius=void 0,this.outerRadius=void 0,this.offsetX=void 0,this.offsetY=void 0}linkScales(){}parse(t,e){const i=this.getDataset().data,s=this._cachedMeta;if(!1===this._parsing)s._parsed=i;else{let o,n,r=t=>+i[t];if(Qt(i[t])){const{key:t="value"}=this._parsing;r=e=>+ge(i[e],t)}for(o=t,n=t+e;o<n;++o)s._parsed[o]=r(o)}}_getRotation(){return Re(this.options.rotation-90)}_getCircumference(){return Re(this.options.circumference)}_getRotationExtents(){let t=ye,e=-ye;for(let i=0;i<this.chart.data.datasets.length;++i)if(this.chart.isDatasetVisible(i)&&this.chart.getDatasetMeta(i).type===this._type){const s=this.chart.getDatasetMeta(i).controller,o=s._getRotation(),n=s._getCircumference();t=Math.min(t,o),e=Math.max(e,o+n)}return{rotation:t,circumference:e-t}}update(t){const e=this.chart,{chartArea:i}=e,s=this._cachedMeta,o=s.data,n=this.getMaxBorderWidth()+this.getMaxOffset(o)+this.options.spacing,r=Math.max((Math.min(i.width,i.height)-n)/2,0),a=Math.min((l=this.options.cutout,h=r,"string"==typeof l&&l.endsWith("%")?parseFloat(l)/100:+l/h),1);var l,h;const c=this._getRingWeight(this.index),{circumference:d,rotation:u}=this._getRotationExtents(),{ratioX:p,ratioY:g,offsetX:f,offsetY:m}=function(t,e,i){let s=1,o=1,n=0,r=0;if(e<ye){const a=t,l=a+e,h=Math.cos(a),c=Math.sin(a),d=Math.cos(l),u=Math.sin(l),p=(t,e,s)=>Ve(t,a,l,!0)?1:Math.max(e,e*i,s,s*i),g=(t,e,s)=>Ve(t,a,l,!0)?-1:Math.min(e,e*i,s,s*i),f=p(0,h,d),m=p(ke,c,u),b=g(_e,h,d),x=g(_e+ke,c,u);s=(f-b)/2,o=(m-x)/2,n=-(f+b)/2,r=-(m+x)/2}return{ratioX:s,ratioY:o,offsetX:n,offsetY:r}}(u,d,a),b=(i.width-n)/p,x=(i.height-n)/g,_=Math.max(Math.min(b,x)/2,0),y=se(this.options.radius,_),v=(y-Math.max(y*a,0))/this._getVisibleDatasetWeightTotal();this.offsetX=f*y,this.offsetY=m*y,s.total=this.calculateTotal(),this.outerRadius=y-v*this._getRingWeightOffset(this.index),this.innerRadius=Math.max(this.outerRadius-v*c,0),this.updateElements(o,0,o.length,t)}_circumference(t,e){const i=this.options,s=this._cachedMeta,o=this._getCircumference();return e&&i.animation.animateRotate||!this.chart.getDataVisibility(t)||null===s._parsed[t]||s.data[t].hidden?0:this.calculateCircumference(s._parsed[t]*o/ye)}updateElements(t,e,i,s){const o="reset"===s,n=this.chart,r=n.chartArea,a=n.options.animation,l=(r.left+r.right)/2,h=(r.top+r.bottom)/2,c=o&&a.animateScale,d=c?0:this.innerRadius,u=c?0:this.outerRadius,{sharedOptions:p,includeOptions:g}=this._getSharedOptions(e,s);let f,m=this._getRotation();for(f=0;f<e;++f)m+=this._circumference(f,o);for(f=e;f<e+i;++f){const e=this._circumference(f,o),i=t[f],n={x:l+this.offsetX,y:h+this.offsetY,startAngle:m,endAngle:m+e,circumference:e,outerRadius:u,innerRadius:d};g&&(n.options=p||this.resolveDataElementOptions(f,i.active?"active":s)),m+=e,this.updateElement(i,f,n,s)}}calculateTotal(){const t=this._cachedMeta,e=t.data;let i,s=0;for(i=0;i<e.length;i++){const o=t._parsed[i];null===o||isNaN(o)||!this.chart.getDataVisibility(i)||e[i].hidden||(s+=Math.abs(o))}return s}calculateCircumference(t){const e=this._cachedMeta.total;return e>0&&!isNaN(t)?ye*(Math.abs(t)/e):0}getLabelAndValue(t){const e=this._cachedMeta,i=this.chart,s=i.data.labels||[],o=di(e._parsed[t],i.options.locale);return{label:s[t]||"",value:o}}getMaxBorderWidth(t){let e=0;const i=this.chart;let s,o,n,r,a;if(!t)for(s=0,o=i.data.datasets.length;s<o;++s)if(i.isDatasetVisible(s)){n=i.getDatasetMeta(s),t=n.data,r=n.controller;break}if(!t)return 0;for(s=0,o=t.length;s<o;++s)a=r.resolveDataElementOptions(s),"inner"!==a.borderAlign&&(e=Math.max(e,a.borderWidth||0,a.hoverBorderWidth||0));return e}getMaxOffset(t){let e=0;for(let i=0,s=t.length;i<s;++i){const t=this.resolveDataElementOptions(i);e=Math.max(e,t.offset||0,t.hoverOffset||0)}return e}_getRingWeightOffset(t){let e=0;for(let i=0;i<t;++i)this.chart.isDatasetVisible(i)&&(e+=this._getRingWeight(i));return e}_getRingWeight(t){return Math.max(ie(this.chart.data.datasets[t].weight,1),0)}_getVisibleDatasetWeightTotal(){return this._getRingWeightOffset(this.chart.data.datasets.length)||1}}s(fo,"id","doughnut"),s(fo,"defaults",{datasetElementType:!1,dataElementType:"arc",animation:{animateRotate:!0,animateScale:!1},animations:{numbers:{type:"number",properties:["circumference","endAngle","innerRadius","outerRadius","startAngle","x","y","offset","borderWidth","spacing"]}},cutout:"50%",rotation:0,circumference:360,radius:"100%",spacing:0,indexAxis:"r"}),s(fo,"descriptors",{_scriptable:t=>"spacing"!==t,_indexable:t=>"spacing"!==t&&!t.startsWith("borderDash")&&!t.startsWith("hoverBorderDash")}),s(fo,"overrides",{aspectRatio:1,plugins:{legend:{labels:{generateLabels(t){const e=t.data,{labels:{pointStyle:i,textAlign:s,color:o,useBorderRadius:n,borderRadius:r}}=t.legend.options;return e.labels.length&&e.datasets.length?e.labels.map((e,a)=>{const l=t.getDatasetMeta(0).controller.getStyle(a);return{text:e,fillStyle:l.backgroundColor,fontColor:o,hidden:!t.getDataVisibility(a),lineDash:l.borderDash,lineDashOffset:l.borderDashOffset,lineJoin:l.borderJoinStyle,lineWidth:l.borderWidth,strokeStyle:l.borderColor,textAlign:s,pointStyle:i,borderRadius:n&&(r||l.borderRadius),index:a}}):[]}},onClick(t,e,i){i.chart.toggleDataVisibility(e.index),i.chart.update()}}}});class mo extends so{initialize(){this.enableOptionSharing=!0,this.supportsDecimation=!0,super.initialize()}update(t){const e=this._cachedMeta,{dataset:i,data:s=[],_dataset:o}=e,n=this.chart._animationsDisabled;let{start:r,count:a}=Qe(e,s,n);this._drawStart=r,this._drawCount=a,ti(e)&&(r=0,a=s.length),i._chart=this.chart,i._datasetIndex=this.index,i._decimated=!!o._decimated,i.points=s;const l=this.resolveDatasetElementOptions(t);this.options.showLine||(l.borderWidth=0),l.segment=this.options.segment,this.updateElement(i,void 0,{animated:!n,options:l},t),this.updateElements(s,r,a,t)}updateElements(t,e,i,s){const o="reset"===s,{iScale:n,vScale:r,_stacked:a,_dataset:l}=this._cachedMeta,{sharedOptions:h,includeOptions:c}=this._getSharedOptions(e,s),d=n.axis,u=r.axis,{spanGaps:p,segment:g}=this.options,f=Oe(p)?p:Number.POSITIVE_INFINITY,m=this.chart._animationsDisabled||o||"none"===s,b=e+i,x=t.length;let _=e>0&&this.getParsed(e-1);for(let y=0;y<x;++y){const i=t[y],p=m?i:{};if(y<e||y>=b){p.skip=!0;continue}const x=this.getParsed(y),v=Jt(x[u]),w=p[d]=n.getPixelForValue(x[d],y),M=p[u]=o||v?r.getBasePixel():r.getPixelForValue(a?this.applyStack(r,x,a):x[u],y);p.skip=isNaN(w)||isNaN(M)||v,p.stop=y>0&&Math.abs(x[d]-_[d])>f,g&&(p.parsed=x,p.raw=l.data[y]),c&&(p.options=h||this.resolveDataElementOptions(y,i.active?"active":s)),m||this.updateElement(i,y,p,s),_=x}}getMaxOverflow(){const t=this._cachedMeta,e=t.dataset,i=e.options&&e.options.borderWidth||0,s=t.data||[];if(!s.length)return i;const o=s[0].size(this.resolveDataElementOptions(0)),n=s[s.length-1].size(this.resolveDataElementOptions(s.length-1));return Math.max(i,o,n)/2}draw(){const t=this._cachedMeta;t.dataset.updateControlPoints(this.chart.chartArea,t.iScale.axis),super.draw()}}s(mo,"id","line"),s(mo,"defaults",{datasetElementType:"line",dataElementType:"point",showLine:!0,spanGaps:!1}),s(mo,"overrides",{scales:{_index_:{type:"category"},_value_:{type:"linear"}}});class bo extends so{constructor(t,e){super(t,e),this.innerRadius=void 0,this.outerRadius=void 0}getLabelAndValue(t){const e=this._cachedMeta,i=this.chart,s=i.data.labels||[],o=di(e._parsed[t].r,i.options.locale);return{label:s[t]||"",value:o}}parseObjectData(t,e,i,s){return ns.bind(this)(t,e,i,s)}update(t){const e=this._cachedMeta.data;this._updateRadius(),this.updateElements(e,0,e.length,t)}getMinMax(){const t=this._cachedMeta,e={min:Number.POSITIVE_INFINITY,max:Number.NEGATIVE_INFINITY};return t.data.forEach((t,i)=>{const s=this.getParsed(i).r;!isNaN(s)&&this.chart.getDataVisibility(i)&&(s<e.min&&(e.min=s),s>e.max&&(e.max=s))}),e}_updateRadius(){const t=this.chart,e=t.chartArea,i=t.options,s=Math.min(e.right-e.left,e.bottom-e.top),o=Math.max(s/2,0),n=(o-Math.max(i.cutoutPercentage?o/100*i.cutoutPercentage:1,0))/t.getVisibleDatasetCount();this.outerRadius=o-n*this.index,this.innerRadius=this.outerRadius-n}updateElements(t,e,i,s){const o="reset"===s,n=this.chart,r=n.options.animation,a=this._cachedMeta.rScale,l=a.xCenter,h=a.yCenter,c=a.getIndexAngle(0)-.5*_e;let d,u=c;const p=360/this.countVisibleElements();for(d=0;d<e;++d)u+=this._computeAngle(d,s,p);for(d=e;d<e+i;d++){const e=t[d];let i=u,g=u+this._computeAngle(d,s,p),f=n.getDataVisibility(d)?a.getDistanceFromCenterForValue(this.getParsed(d).r):0;u=g,o&&(r.animateScale&&(f=0),r.animateRotate&&(i=g=c));const m={x:l,y:h,innerRadius:0,outerRadius:f,startAngle:i,endAngle:g,options:this.resolveDataElementOptions(d,e.active?"active":s)};this.updateElement(e,d,m,s)}}countVisibleElements(){const t=this._cachedMeta;let e=0;return t.data.forEach((t,i)=>{!isNaN(this.getParsed(i).r)&&this.chart.getDataVisibility(i)&&e++}),e}_computeAngle(t,e,i){return this.chart.getDataVisibility(t)?Re(this.resolveDataElementOptions(t,e).angle||i):0}}s(bo,"id","polarArea"),s(bo,"defaults",{dataElementType:"arc",animation:{animateRotate:!0,animateScale:!0},animations:{numbers:{type:"number",properties:["x","y","startAngle","endAngle","innerRadius","outerRadius"]}},indexAxis:"r",startAngle:0}),s(bo,"overrides",{aspectRatio:1,plugins:{legend:{labels:{generateLabels(t){const e=t.data;if(e.labels.length&&e.datasets.length){const{labels:{pointStyle:i,color:s}}=t.legend.options;return e.labels.map((e,o)=>{const n=t.getDatasetMeta(0).controller.getStyle(o);return{text:e,fillStyle:n.backgroundColor,strokeStyle:n.borderColor,fontColor:s,lineWidth:n.borderWidth,pointStyle:i,hidden:!t.getDataVisibility(o),index:o}})}return[]}},onClick(t,e,i){i.chart.toggleDataVisibility(e.index),i.chart.update()}}},scales:{r:{type:"radialLinear",angleLines:{display:!1},beginAtZero:!0,grid:{circular:!0},pointLabels:{display:!1},startAngle:0}}});class xo extends fo{}s(xo,"id","pie"),s(xo,"defaults",{cutout:0,rotation:0,circumference:360,radius:"100%"});class _o extends so{getLabelAndValue(t){const e=this._cachedMeta.vScale,i=this.getParsed(t);return{label:e.getLabels()[t],value:""+e.getLabelForValue(i[e.axis])}}parseObjectData(t,e,i,s){return ns.bind(this)(t,e,i,s)}update(t){const e=this._cachedMeta,i=e.dataset,s=e.data||[],o=e.iScale.getLabels();if(i.points=s,"resize"!==t){const e=this.resolveDatasetElementOptions(t);this.options.showLine||(e.borderWidth=0);const n={_loop:!0,_fullLoop:o.length===s.length,options:e};this.updateElement(i,void 0,n,t)}this.updateElements(s,0,s.length,t)}updateElements(t,e,i,s){const o=this._cachedMeta.rScale,n="reset"===s;for(let r=e;r<e+i;r++){const e=t[r],i=this.resolveDataElementOptions(r,e.active?"active":s),a=o.getPointPositionForValue(r,this.getParsed(r).r),l=n?o.xCenter:a.x,h=n?o.yCenter:a.y,c={x:l,y:h,angle:a.angle,skip:isNaN(l)||isNaN(h),options:i};this.updateElement(e,r,c,s)}}}s(_o,"id","radar"),s(_o,"defaults",{datasetElementType:"line",dataElementType:"point",indexAxis:"r",showLine:!0,elements:{line:{fill:"start"}}}),s(_o,"overrides",{aspectRatio:1,scales:{r:{type:"radialLinear"}}});class yo extends so{getLabelAndValue(t){const e=this._cachedMeta,i=this.chart.data.labels||[],{xScale:s,yScale:o}=e,n=this.getParsed(t),r=s.getLabelForValue(n.x),a=o.getLabelForValue(n.y);return{label:i[t]||"",value:"("+r+", "+a+")"}}update(t){const e=this._cachedMeta,{data:i=[]}=e,s=this.chart._animationsDisabled;let{start:o,count:n}=Qe(e,i,s);if(this._drawStart=o,this._drawCount=n,ti(e)&&(o=0,n=i.length),this.options.showLine){this.datasetElementType||this.addElements();const{dataset:o,_dataset:n}=e;o._chart=this.chart,o._datasetIndex=this.index,o._decimated=!!n._decimated,o.points=i;const r=this.resolveDatasetElementOptions(t);r.segment=this.options.segment,this.updateElement(o,void 0,{animated:!s,options:r},t)}else this.datasetElementType&&(delete e.dataset,this.datasetElementType=!1);this.updateElements(i,o,n,t)}addElements(){const{showLine:t}=this.options;!this.datasetElementType&&t&&(this.datasetElementType=this.chart.registry.getElement("line")),super.addElements()}updateElements(t,e,i,s){const o="reset"===s,{iScale:n,vScale:r,_stacked:a,_dataset:l}=this._cachedMeta,h=this.resolveDataElementOptions(e,s),c=this.getSharedOptions(h),d=this.includeOptions(s,c),u=n.axis,p=r.axis,{spanGaps:g,segment:f}=this.options,m=Oe(g)?g:Number.POSITIVE_INFINITY,b=this.chart._animationsDisabled||o||"none"===s;let x=e>0&&this.getParsed(e-1);for(let _=e;_<e+i;++_){const e=t[_],i=this.getParsed(_),h=b?e:{},g=Jt(i[p]),y=h[u]=n.getPixelForValue(i[u],_),v=h[p]=o||g?r.getBasePixel():r.getPixelForValue(a?this.applyStack(r,i,a):i[p],_);h.skip=isNaN(y)||isNaN(v)||g,h.stop=_>0&&Math.abs(i[u]-x[u])>m,f&&(h.parsed=i,h.raw=l.data[_]),d&&(h.options=c||this.resolveDataElementOptions(_,e.active?"active":s)),b||this.updateElement(e,_,h,s),x=i}this.updateSharedOptions(c,s,h)}getMaxOverflow(){const t=this._cachedMeta,e=t.data||[];if(!this.options.showLine){let t=0;for(let i=e.length-1;i>=0;--i)t=Math.max(t,e[i].size(this.resolveDataElementOptions(i))/2);return t>0&&t}const i=t.dataset,s=i.options&&i.options.borderWidth||0;if(!e.length)return s;const o=e[0].size(this.resolveDataElementOptions(0)),n=e[e.length-1].size(this.resolveDataElementOptions(e.length-1));return Math.max(s,o,n)/2}}s(yo,"id","scatter"),s(yo,"defaults",{datasetElementType:!1,dataElementType:"point",showLine:!1,fill:!1}),s(yo,"overrides",{interaction:{mode:"point"},scales:{x:{type:"linear"},y:{type:"linear"}}});var vo=Object.freeze({__proto__:null,BarController:po,BubbleController:go,DoughnutController:fo,LineController:mo,PieController:xo,PolarAreaController:bo,RadarController:_o,ScatterController:yo});function wo(){throw new Error("This method is not implemented: Check that a complete date adapter is provided.")}class Mo{constructor(t){s(this,"options"),this.options=t||{}}static override(t){Object.assign(Mo.prototype,t)}init(){}formats(){return wo()}parse(){return wo()}format(){return wo()}add(){return wo()}diff(){return wo()}startOf(){return wo()}endOf(){return wo()}}var ko=Mo;function So(t,e,i,s){const{controller:o,data:n,_sorted:r}=t,a=o._cachedMeta.iScale,l=t.dataset&&t.dataset.options?t.dataset.options.spanGaps:null;if(a&&e===a.axis&&"r"!==e&&r&&n.length){const r=a._reversePixels?Ue:je;if(!s){const s=r(n,e,i);if(l){const{vScale:e}=o._cachedMeta,{_parsed:i}=t,n=i.slice(0,s.lo+1).reverse().findIndex(t=>!Jt(t[e.axis]));s.lo-=Math.max(0,n);const r=i.slice(s.hi).findIndex(t=>!Jt(t[e.axis]));s.hi+=Math.max(0,r)}return s}if(o._sharedOptions){const t=n[0],s="function"==typeof t.getRange&&t.getRange(e);if(s){const t=r(n,e,i-s),o=r(n,e,i+s);return{lo:t.lo,hi:o.hi}}}}return{lo:0,hi:n.length-1}}function Co(t,e,i,s,o){const n=t.getSortedVisibleDatasetMetas(),r=i[e];for(let a=0,l=n.length;a<l;++a){const{index:t,data:i}=n[a],{lo:l,hi:h}=So(n[a],e,r,o);for(let e=l;e<=h;++e){const o=i[e];o.skip||s(o,t,e)}}}function Ao(t,e,i,s,o){const n=[];if(!o&&!t.isPointInArea(e))return n;return Co(t,i,e,function(i,r,a){(o||Ci(i,t.chartArea,0))&&i.inRange(e.x,e.y,s)&&n.push({element:i,datasetIndex:r,index:a})},!0),n}function Po(t,e,i,s,o,n){let r=[];const a=function(t){const e=-1!==t.indexOf("x"),i=-1!==t.indexOf("y");return function(t,s){const o=e?Math.abs(t.x-s.x):0,n=i?Math.abs(t.y-s.y):0;return Math.sqrt(Math.pow(o,2)+Math.pow(n,2))}}(i);let l=Number.POSITIVE_INFINITY;return Co(t,i,e,function(i,h,c){const d=i.inRange(e.x,e.y,o);if(s&&!d)return;const u=i.getCenterPoint(o);if(!(!!n||t.isPointInArea(u))&&!d)return;const p=a(e,u);p<l?(r=[{element:i,datasetIndex:h,index:c}],l=p):p===l&&r.push({element:i,datasetIndex:h,index:c})}),r}function Do(t,e,i,s,o,n){return n||t.isPointInArea(e)?"r"!==i||s?Po(t,e,i,s,o,n):function(t,e,i,s){let o=[];return Co(t,i,e,function(t,i,n){const{startAngle:r,endAngle:a}=t.getProps(["startAngle","endAngle"],s),{angle:l}=Ie(t,{x:e.x,y:e.y});Ve(l,r,a)&&o.push({element:t,datasetIndex:i,index:n})}),o}(t,e,i,o):[]}function Eo(t,e,i,s,o){const n=[],r="x"===i?"inXRange":"inYRange";let a=!1;return Co(t,i,e,(t,s,l)=>{t[r]&&t[r](e[i],o)&&(n.push({element:t,datasetIndex:s,index:l}),a=a||t.inRange(e.x,e.y,o))}),s&&!a?[]:n}var Oo={modes:{index(t,e,i,s){const o=_s(e,t),n=i.axis||"x",r=i.includeInvisible||!1,a=i.intersect?Ao(t,o,n,s,r):Do(t,o,n,!1,s,r),l=[];return a.length?(t.getSortedVisibleDatasetMetas().forEach(t=>{const e=a[0].index,i=t.data[e];i&&!i.skip&&l.push({element:i,datasetIndex:t.index,index:e})}),l):[]},dataset(t,e,i,s){const o=_s(e,t),n=i.axis||"xy",r=i.includeInvisible||!1;let a=i.intersect?Ao(t,o,n,s,r):Do(t,o,n,!1,s,r);if(a.length>0){const e=a[0].datasetIndex,i=t.getDatasetMeta(e).data;a=[];for(let t=0;t<i.length;++t)a.push({element:i[t],datasetIndex:e,index:t})}return a},point:(t,e,i,s)=>Ao(t,_s(e,t),i.axis||"xy",s,i.includeInvisible||!1),nearest(t,e,i,s){const o=_s(e,t),n=i.axis||"xy",r=i.includeInvisible||!1;return Do(t,o,n,i.intersect,s,r)},x:(t,e,i,s)=>Eo(t,_s(e,t),"x",i.intersect,s),y:(t,e,i,s)=>Eo(t,_s(e,t),"y",i.intersect,s)}};const To=["left","top","right","bottom"];function Ro(t,e){return t.filter(t=>t.pos===e)}function Lo(t,e){return t.filter(t=>-1===To.indexOf(t.pos)&&t.box.axis===e)}function $o(t,e){return t.sort((t,i)=>{const s=e?i:t,o=e?t:i;return s.weight===o.weight?s.index-o.index:s.weight-o.weight})}function Io(t,e){const i=function(t){const e={};for(const i of t){const{stack:t,pos:s,stackWeight:o}=i;if(!t||!To.includes(s))continue;const n=e[t]||(e[t]={count:0,placed:0,weight:0,size:0});n.count++,n.weight+=o}return e}(t),{vBoxMaxWidth:s,hBoxMaxHeight:o}=e;let n,r,a;for(n=0,r=t.length;n<r;++n){a=t[n];const{fullSize:r}=a.box,l=i[a.stack],h=l&&a.stackWeight/l.weight;a.horizontal?(a.width=h?h*s:r&&e.availableWidth,a.height=o):(a.width=s,a.height=h?h*o:r&&e.availableHeight)}return i}function zo(t,e,i,s){return Math.max(t[i],e[i])+Math.max(t[s],e[s])}function Fo(t,e){t.top=Math.max(t.top,e.top),t.left=Math.max(t.left,e.left),t.bottom=Math.max(t.bottom,e.bottom),t.right=Math.max(t.right,e.right)}function Ho(t,e,i,s){const{pos:o,box:n}=i,r=t.maxPadding;if(!Qt(o)){i.size&&(t[o]-=i.size);const e=s[i.stack]||{size:0,count:1};e.size=Math.max(e.size,i.horizontal?n.height:n.width),i.size=e.size/e.count,t[o]+=i.size}n.getPadding&&Fo(r,n.getPadding());const a=Math.max(0,e.outerWidth-zo(r,t,"left","right")),l=Math.max(0,e.outerHeight-zo(r,t,"top","bottom")),h=a!==t.w,c=l!==t.h;return t.w=a,t.h=l,i.horizontal?{same:h,other:c}:{same:c,other:h}}function Vo(t,e){const i=e.maxPadding;function s(t){const s={left:0,top:0,right:0,bottom:0};return t.forEach(t=>{s[t]=Math.max(e[t],i[t])}),s}return s(t?["left","right"]:["top","bottom"])}function Bo(t,e,i,s){const o=[];let n,r,a,l,h,c;for(n=0,r=t.length,h=0;n<r;++n){a=t[n],l=a.box,l.update(a.width||e.w,a.height||e.h,Vo(a.horizontal,e));const{same:r,other:d}=Ho(e,i,a,s);h|=r&&o.length,c=c||d,l.fullSize||o.push(a)}return h&&Bo(o,e,i,s)||c}function No(t,e,i,s,o){t.top=i,t.left=e,t.right=e+s,t.bottom=i+o,t.width=s,t.height=o}function Wo(t,e,i,s){const o=i.padding;let{x:n,y:r}=e;for(const a of t){const t=a.box,l=s[a.stack]||{placed:0,weight:1},h=a.stackWeight/l.weight||1;if(a.horizontal){const s=e.w*h,n=l.size||t.height;me(l.start)&&(r=l.start),t.fullSize?No(t,o.left,r,i.outerWidth-o.right-o.left,n):No(t,e.left+l.placed,r,s,n),l.start=r,l.placed+=s,r=t.bottom}else{const s=e.h*h,r=l.size||t.width;me(l.start)&&(n=l.start),t.fullSize?No(t,n,o.top,r,i.outerHeight-o.bottom-o.top):No(t,n,e.top+l.placed,r,s),l.start=n,l.placed+=s,n=t.right}}e.x=n,e.y=r}var jo={addBox(t,e){t.boxes||(t.boxes=[]),e.fullSize=e.fullSize||!1,e.position=e.position||"top",e.weight=e.weight||0,e._layers=e._layers||function(){return[{z:0,draw(t){e.draw(t)}}]},t.boxes.push(e)},removeBox(t,e){const i=t.boxes?t.boxes.indexOf(e):-1;-1!==i&&t.boxes.splice(i,1)},configure(t,e,i){e.fullSize=i.fullSize,e.position=i.position,e.weight=i.weight},update(t,e,i,s){if(!t)return;const o=Ni(t.options.layout.padding),n=Math.max(e-o.width,0),r=Math.max(i-o.height,0),a=function(t){const e=function(t){const e=[];let i,s,o,n,r,a;for(i=0,s=(t||[]).length;i<s;++i)o=t[i],({position:n,options:{stack:r,stackWeight:a=1}}=o),e.push({index:i,box:o,pos:n,horizontal:o.isHorizontal(),weight:o.weight,stack:r&&n+r,stackWeight:a});return e}(t),i=$o(e.filter(t=>t.box.fullSize),!0),s=$o(Ro(e,"left"),!0),o=$o(Ro(e,"right")),n=$o(Ro(e,"top"),!0),r=$o(Ro(e,"bottom")),a=Lo(e,"x"),l=Lo(e,"y");return{fullSize:i,leftAndTop:s.concat(n),rightAndBottom:o.concat(l).concat(r).concat(a),chartArea:Ro(e,"chartArea"),vertical:s.concat(o).concat(l),horizontal:n.concat(r).concat(a)}}(t.boxes),l=a.vertical,h=a.horizontal;ne(t.boxes,t=>{"function"==typeof t.beforeLayout&&t.beforeLayout()});const c=l.reduce((t,e)=>e.box.options&&!1===e.box.options.display?t:t+1,0)||1,d=Object.freeze({outerWidth:e,outerHeight:i,padding:o,availableWidth:n,availableHeight:r,vBoxMaxWidth:n/2/c,hBoxMaxHeight:r/2}),u=Object.assign({},o);Fo(u,Ni(s));const p=Object.assign({maxPadding:u,w:n,h:r,x:o.left,y:o.top},o),g=Io(l.concat(h),d);Bo(a.fullSize,p,d,g),Bo(l,p,d,g),Bo(h,p,d,g)&&Bo(l,p,d,g),function(t){const e=t.maxPadding;function i(i){const s=Math.max(e[i]-t[i],0);return t[i]+=s,s}t.y+=i("top"),t.x+=i("left"),i("right"),i("bottom")}(p),Wo(a.leftAndTop,p,d,g),p.x+=p.w,p.y+=p.h,Wo(a.rightAndBottom,p,d,g),t.chartArea={left:p.left,top:p.top,right:p.left+p.w,bottom:p.top+p.h,height:p.h,width:p.w},ne(a.chartArea,e=>{const i=e.box;Object.assign(i,t.chartArea),i.update(p.w,p.h,{left:0,top:0,right:0,bottom:0})})}};class Uo{acquireContext(t,e){}releaseContext(t){return!1}addEventListener(t,e,i){}removeEventListener(t,e,i){}getDevicePixelRatio(){return 1}getMaximumSize(t,e,i,s){return e=Math.max(0,e||t.width),i=i||t.height,{width:e,height:Math.max(0,s?Math.floor(e/s):i)}}isAttached(t){return!0}updateConfig(t){}}class Yo extends Uo{acquireContext(t){return t&&t.getContext&&t.getContext("2d")||null}updateConfig(t){t.options.animation=!1}}const Xo="$chartjs",qo={touchstart:"mousedown",touchmove:"mousemove",touchend:"mouseup",pointerenter:"mouseenter",pointerdown:"mousedown",pointermove:"mousemove",pointerup:"mouseup",pointerleave:"mouseout",pointerout:"mouseout"},Go=t=>null===t||""===t;const Ko=!!Ms&&{passive:!0};function Jo(t,e,i){t&&t.canvas&&t.canvas.removeEventListener(e,i,Ko)}function Zo(t,e){for(const i of t)if(i===e||i.contains(e))return!0}function Qo(t,e,i){const s=t.canvas,o=new MutationObserver(t=>{let e=!1;for(const i of t)e=e||Zo(i.addedNodes,s),e=e&&!Zo(i.removedNodes,s);e&&i()});return o.observe(document,{childList:!0,subtree:!0}),o}function tn(t,e,i){const s=t.canvas,o=new MutationObserver(t=>{let e=!1;for(const i of t)e=e||Zo(i.removedNodes,s),e=e&&!Zo(i.addedNodes,s);e&&i()});return o.observe(document,{childList:!0,subtree:!0}),o}const en=new Map;let sn=0;function on(){const t=window.devicePixelRatio;t!==sn&&(sn=t,en.forEach((e,i)=>{i.currentDevicePixelRatio!==t&&e()}))}function nn(t,e,i){const s=t.canvas,o=s&&gs(s);if(!o)return;const n=Ke((t,e)=>{const s=o.clientWidth;i(t,e),s<o.clientWidth&&i()},window),r=new ResizeObserver(t=>{const e=t[0],i=e.contentRect.width,s=e.contentRect.height;0===i&&0===s||n(i,s)});return r.observe(o),function(t,e){en.size||window.addEventListener("resize",on),en.set(t,e)}(t,n),r}function rn(t,e,i){i&&i.disconnect(),"resize"===e&&function(t){en.delete(t),en.size||window.removeEventListener("resize",on)}(t)}function an(t,e,i){const s=t.canvas,o=Ke(e=>{null!==t.ctx&&i(function(t,e){const i=qo[t.type]||t.type,{x:s,y:o}=_s(t,e);return{type:i,chart:e,native:t,x:void 0!==s?s:null,y:void 0!==o?o:null}}(e,t))},t);return function(t,e,i){t&&t.addEventListener(e,i,Ko)}(s,e,o),o}class ln extends Uo{acquireContext(t,e){const i=t&&t.getContext&&t.getContext("2d");return i&&i.canvas===t?(function(t,e){const i=t.style,s=t.getAttribute("height"),o=t.getAttribute("width");if(t[Xo]={initial:{height:s,width:o,style:{display:i.display,height:i.height,width:i.width}}},i.display=i.display||"block",i.boxSizing=i.boxSizing||"border-box",Go(o)){const e=ks(t,"width");void 0!==e&&(t.width=e)}if(Go(s))if(""===t.style.height)t.height=t.width/(e||2);else{const e=ks(t,"height");void 0!==e&&(t.height=e)}}(t,e),i):null}releaseContext(t){const e=t.canvas;if(!e[Xo])return!1;const i=e[Xo].initial;["height","width"].forEach(t=>{const s=i[t];Jt(s)?e.removeAttribute(t):e.setAttribute(t,s)});const s=i.style||{};return Object.keys(s).forEach(t=>{e.style[t]=s[t]}),e.width=e.width,delete e[Xo],!0}addEventListener(t,e,i){this.removeEventListener(t,e);const s=t.$proxies||(t.$proxies={}),o={attach:Qo,detach:tn,resize:nn}[e]||an;s[e]=o(t,e,i)}removeEventListener(t,e){const i=t.$proxies||(t.$proxies={}),s=i[e];if(!s)return;({attach:rn,detach:rn,resize:rn}[e]||Jo)(t,e,s),i[e]=void 0}getDevicePixelRatio(){return window.devicePixelRatio}getMaximumSize(t,e,i,s){return vs(t,e,i,s)}isAttached(t){const e=t&&gs(t);return!(!e||!e.isConnected)}}class hn{constructor(){s(this,"x"),s(this,"y"),s(this,"active",!1),s(this,"options"),s(this,"$animations")}tooltipPosition(t){const{x:e,y:i}=this.getProps(["x","y"],t);return{x:e,y:i}}hasValue(){return Oe(this.x)&&Oe(this.y)}getProps(t,e){const i=this.$animations;if(!e||!i)return this;const s={};return t.forEach(t=>{s[t]=i[t]&&i[t].active()?i[t]._to:this[t]}),s}}function cn(t,e){const i=t.options.ticks,s=function(t){const e=t.options.offset,i=t._tickSize(),s=t._length/i+(e?0:1),o=t._maxLength/i;return Math.floor(Math.min(s,o))}(t),o=Math.min(i.maxTicksLimit||s,s),n=i.major.enabled?function(t){const e=[];let i,s;for(i=0,s=t.length;i<s;i++)t[i].major&&e.push(i);return e}(e):[],r=n.length,a=n[0],l=n[r-1],h=[];if(r>o)return function(t,e,i,s){let o,n=0,r=i[0];for(s=Math.ceil(s),o=0;o<t.length;o++)o===r&&(e.push(t[o]),n++,r=i[n*s])}(e,h,n,r/o),h;const c=function(t,e,i){const s=function(t){const e=t.length;let i,s;if(e<2)return!1;for(s=t[0],i=1;i<e;++i)if(t[i]-t[i-1]!==s)return!1;return s}(t),o=e.length/i;if(!s)return Math.max(o,1);const n=function(t){const e=[],i=Math.sqrt(t);let s;for(s=1;s<i;s++)t%s===0&&(e.push(s),e.push(t/s));return i===(0|i)&&e.push(i),e.sort((t,e)=>t-e).pop(),e}(s);for(let r=0,a=n.length-1;r<a;r++){const t=n[r];if(t>o)return t}return Math.max(o,1)}(n,e,o);if(r>0){let t,i;const s=r>1?Math.round((l-a)/(r-1)):null;for(dn(e,h,c,Jt(s)?0:a-s,a),t=0,i=r-1;t<i;t++)dn(e,h,c,n[t],n[t+1]);return dn(e,h,c,l,Jt(s)?e.length:l+s),h}return dn(e,h,c),h}function dn(t,e,i,s,o){const n=ie(s,0),r=Math.min(ie(o,t.length),t.length);let a,l,h,c=0;for(i=Math.ceil(i),o&&(a=o-s,i=a/Math.floor(a/i)),h=n;h<0;)c++,h=Math.round(n+c*i);for(l=Math.max(n,0);l<r;l++)l===h&&(e.push(t[l]),c++,h=Math.round(n+c*i))}s(hn,"defaults",{}),s(hn,"defaultRoutes");const un=(t,e,i)=>"top"===e||"left"===e?t[e]+i:t[e]-i,pn=(t,e)=>Math.min(e||t,t);function gn(t,e){const i=[],s=t.length/e,o=t.length;let n=0;for(;n<o;n+=s)i.push(t[Math.floor(n)]);return i}function fn(t,e,i){const s=t.ticks.length,o=Math.min(e,s-1),n=t._startPixel,r=t._endPixel,a=1e-6;let l,h=t.getPixelForTick(o);if(!(i&&(l=1===s?Math.max(h-n,r-h):0===e?(t.getPixelForTick(1)-h)/2:(h-t.getPixelForTick(o-1))/2,h+=o<e?l:-l,h<n-a||h>r+a)))return h}function mn(t){return t.drawTicks?t.tickLength:0}function bn(t,e){if(!t.display)return 0;const i=Wi(t.font,e),s=Ni(t.padding);return(Zt(t.text)?t.text.length:1)*i.lineHeight+s.height}function xn(t,e,i){let s=Je(t);return(i&&"right"!==e||!i&&"right"===e)&&(s=(t=>"left"===t?"right":"right"===t?"left":t)(s)),s}class _n extends hn{constructor(t){super(),this.id=t.id,this.type=t.type,this.options=void 0,this.ctx=t.ctx,this.chart=t.chart,this.top=void 0,this.bottom=void 0,this.left=void 0,this.right=void 0,this.width=void 0,this.height=void 0,this._margins={left:0,right:0,top:0,bottom:0},this.maxWidth=void 0,this.maxHeight=void 0,this.paddingTop=void 0,this.paddingBottom=void 0,this.paddingLeft=void 0,this.paddingRight=void 0,this.axis=void 0,this.labelRotation=void 0,this.min=void 0,this.max=void 0,this._range=void 0,this.ticks=[],this._gridLineItems=null,this._labelItems=null,this._labelSizes=null,this._length=0,this._maxLength=0,this._longestTextCache={},this._startPixel=void 0,this._endPixel=void 0,this._reversePixels=!1,this._userMax=void 0,this._userMin=void 0,this._suggestedMax=void 0,this._suggestedMin=void 0,this._ticksLength=0,this._borderValue=0,this._cache={},this._dataLimitsCached=!1,this.$context=void 0}init(t){this.options=t.setContext(this.getContext()),this.axis=t.axis,this._userMin=this.parse(t.min),this._userMax=this.parse(t.max),this._suggestedMin=this.parse(t.suggestedMin),this._suggestedMax=this.parse(t.suggestedMax)}parse(t,e){return t}getUserBounds(){let{_userMin:t,_userMax:e,_suggestedMin:i,_suggestedMax:s}=this;return t=ee(t,Number.POSITIVE_INFINITY),e=ee(e,Number.NEGATIVE_INFINITY),i=ee(i,Number.POSITIVE_INFINITY),s=ee(s,Number.NEGATIVE_INFINITY),{min:ee(t,i),max:ee(e,s),minDefined:te(t),maxDefined:te(e)}}getMinMax(t){let e,{min:i,max:s,minDefined:o,maxDefined:n}=this.getUserBounds();if(o&&n)return{min:i,max:s};const r=this.getMatchingVisibleMetas();for(let a=0,l=r.length;a<l;++a)e=r[a].controller.getMinMax(this,t),o||(i=Math.min(i,e.min)),n||(s=Math.max(s,e.max));return i=n&&i>s?s:i,s=o&&i>s?i:s,{min:ee(i,ee(s,i)),max:ee(s,ee(i,s))}}getPadding(){return{left:this.paddingLeft||0,top:this.paddingTop||0,right:this.paddingRight||0,bottom:this.paddingBottom||0}}getTicks(){return this.ticks}getLabels(){const t=this.chart.data;return this.options.labels||(this.isHorizontal()?t.xLabels:t.yLabels)||t.labels||[]}getLabelItems(t=this.chart.chartArea){return this._labelItems||(this._labelItems=this._computeLabelItems(t))}beforeLayout(){this._cache={},this._dataLimitsCached=!1}beforeUpdate(){oe(this.options.beforeUpdate,[this])}update(t,e,i){const{beginAtZero:s,grace:o,ticks:n}=this.options,r=n.sampleSize;this.beforeUpdate(),this.maxWidth=t,this.maxHeight=e,this._margins=i=Object.assign({left:0,right:0,top:0,bottom:0},i),this.ticks=null,this._labelSizes=null,this._gridLineItems=null,this._labelItems=null,this.beforeSetDimensions(),this.setDimensions(),this.afterSetDimensions(),this._maxLength=this.isHorizontal()?this.width+i.left+i.right:this.height+i.top+i.bottom,this._dataLimitsCached||(this.beforeDataLimits(),this.determineDataLimits(),this.afterDataLimits(),this._range=function(t,e,i){const{min:s,max:o}=t,n=se(e,(o-s)/2),r=(t,e)=>i&&0===t?0:t+e;return{min:r(s,-Math.abs(n)),max:r(o,n)}}(this,o,s),this._dataLimitsCached=!0),this.beforeBuildTicks(),this.ticks=this.buildTicks()||[],this.afterBuildTicks();const a=r<this.ticks.length;this._convertTicksToLabels(a?gn(this.ticks,r):this.ticks),this.configure(),this.beforeCalculateLabelRotation(),this.calculateLabelRotation(),this.afterCalculateLabelRotation(),n.display&&(n.autoSkip||"auto"===n.source)&&(this.ticks=cn(this,this.ticks),this._labelSizes=null,this.afterAutoSkip()),a&&this._convertTicksToLabels(this.ticks),this.beforeFit(),this.fit(),this.afterFit(),this.afterUpdate()}configure(){let t,e,i=this.options.reverse;this.isHorizontal()?(t=this.left,e=this.right):(t=this.top,e=this.bottom,i=!i),this._startPixel=t,this._endPixel=e,this._reversePixels=i,this._length=e-t,this._alignToPixels=this.options.alignToPixels}afterUpdate(){oe(this.options.afterUpdate,[this])}beforeSetDimensions(){oe(this.options.beforeSetDimensions,[this])}setDimensions(){this.isHorizontal()?(this.width=this.maxWidth,this.left=0,this.right=this.width):(this.height=this.maxHeight,this.top=0,this.bottom=this.height),this.paddingLeft=0,this.paddingTop=0,this.paddingRight=0,this.paddingBottom=0}afterSetDimensions(){oe(this.options.afterSetDimensions,[this])}_callHooks(t){this.chart.notifyPlugins(t,this.getContext()),oe(this.options[t],[this])}beforeDataLimits(){this._callHooks("beforeDataLimits")}determineDataLimits(){}afterDataLimits(){this._callHooks("afterDataLimits")}beforeBuildTicks(){this._callHooks("beforeBuildTicks")}buildTicks(){return[]}afterBuildTicks(){this._callHooks("afterBuildTicks")}beforeTickToLabelConversion(){oe(this.options.beforeTickToLabelConversion,[this])}generateTickLabels(t){const e=this.options.ticks;let i,s,o;for(i=0,s=t.length;i<s;i++)o=t[i],o.label=oe(e.callback,[o.value,i,t],this)}afterTickToLabelConversion(){oe(this.options.afterTickToLabelConversion,[this])}beforeCalculateLabelRotation(){oe(this.options.beforeCalculateLabelRotation,[this])}calculateLabelRotation(){const t=this.options,e=t.ticks,i=pn(this.ticks.length,t.ticks.maxTicksLimit),s=e.minRotation||0,o=e.maxRotation;let n,r,a,l=s;if(!this._isVisible()||!e.display||s>=o||i<=1||!this.isHorizontal())return void(this.labelRotation=s);const h=this._getLabelSizes(),c=h.widest.width,d=h.highest.height,u=Be(this.chart.width-c,0,this.maxWidth);n=t.offset?this.maxWidth/i:u/(i-1),c+6>n&&(n=u/(i-(t.offset?.5:1)),r=this.maxHeight-mn(t.grid)-e.padding-bn(t.title,this.chart.options.font),a=Math.sqrt(c*c+d*d),l=Le(Math.min(Math.asin(Be((h.highest.height+6)/n,-1,1)),Math.asin(Be(r/a,-1,1))-Math.asin(Be(d/a,-1,1)))),l=Math.max(s,Math.min(o,l))),this.labelRotation=l}afterCalculateLabelRotation(){oe(this.options.afterCalculateLabelRotation,[this])}afterAutoSkip(){}beforeFit(){oe(this.options.beforeFit,[this])}fit(){const t={width:0,height:0},{chart:e,options:{ticks:i,title:s,grid:o}}=this,n=this._isVisible(),r=this.isHorizontal();if(n){const n=bn(s,e.options.font);if(r?(t.width=this.maxWidth,t.height=mn(o)+n):(t.height=this.maxHeight,t.width=mn(o)+n),i.display&&this.ticks.length){const{first:e,last:s,widest:o,highest:n}=this._getLabelSizes(),a=2*i.padding,l=Re(this.labelRotation),h=Math.cos(l),c=Math.sin(l);if(r){const e=i.mirror?0:c*o.width+h*n.height;t.height=Math.min(this.maxHeight,t.height+e+a)}else{const e=i.mirror?0:h*o.width+c*n.height;t.width=Math.min(this.maxWidth,t.width+e+a)}this._calculatePadding(e,s,c,h)}}this._handleMargins(),r?(this.width=this._length=e.width-this._margins.left-this._margins.right,this.height=t.height):(this.width=t.width,this.height=this._length=e.height-this._margins.top-this._margins.bottom)}_calculatePadding(t,e,i,s){const{ticks:{align:o,padding:n},position:r}=this.options,a=0!==this.labelRotation,l="top"!==r&&"x"===this.axis;if(this.isHorizontal()){const r=this.getPixelForTick(0)-this.left,h=this.right-this.getPixelForTick(this.ticks.length-1);let c=0,d=0;a?l?(c=s*t.width,d=i*e.height):(c=i*t.height,d=s*e.width):"start"===o?d=e.width:"end"===o?c=t.width:"inner"!==o&&(c=t.width/2,d=e.width/2),this.paddingLeft=Math.max((c-r+n)*this.width/(this.width-r),0),this.paddingRight=Math.max((d-h+n)*this.width/(this.width-h),0)}else{let i=e.height/2,s=t.height/2;"start"===o?(i=0,s=t.height):"end"===o&&(i=e.height,s=0),this.paddingTop=i+n,this.paddingBottom=s+n}}_handleMargins(){this._margins&&(this._margins.left=Math.max(this.paddingLeft,this._margins.left),this._margins.top=Math.max(this.paddingTop,this._margins.top),this._margins.right=Math.max(this.paddingRight,this._margins.right),this._margins.bottom=Math.max(this.paddingBottom,this._margins.bottom))}afterFit(){oe(this.options.afterFit,[this])}isHorizontal(){const{axis:t,position:e}=this.options;return"top"===e||"bottom"===e||"x"===t}isFullSize(){return this.options.fullSize}_convertTicksToLabels(t){let e,i;for(this.beforeTickToLabelConversion(),this.generateTickLabels(t),e=0,i=t.length;e<i;e++)Jt(t[e].label)&&(t.splice(e,1),i--,e--);this.afterTickToLabelConversion()}_getLabelSizes(){let t=this._labelSizes;if(!t){const e=this.options.ticks.sampleSize;let i=this.ticks;e<i.length&&(i=gn(i,e)),this._labelSizes=t=this._computeLabelSizes(i,i.length,this.options.ticks.maxTicksLimit)}return t}_computeLabelSizes(t,e,i){const{ctx:s,_longestTextCache:o}=this,n=[],r=[],a=Math.floor(e/pn(e,i));let l,h,c,d,u,p,g,f,m,b,x,_=0,y=0;for(l=0;l<e;l+=a){if(d=t[l].label,u=this._resolveTickFontOptions(l),s.font=p=u.string,g=o[p]=o[p]||{data:{},gc:[]},f=u.lineHeight,m=b=0,Jt(d)||Zt(d)){if(Zt(d))for(h=0,c=d.length;h<c;++h)x=d[h],Jt(x)||Zt(x)||(m=yi(s,g.data,g.gc,m,x),b+=f)}else m=yi(s,g.data,g.gc,m,d),b=f;n.push(m),r.push(b),_=Math.max(m,_),y=Math.max(b,y)}!function(t,e){ne(t,t=>{const i=t.gc,s=i.length/2;let o;if(s>e){for(o=0;o<s;++o)delete t.data[i[o]];i.splice(0,s)}})}(o,e);const v=n.indexOf(_),w=r.indexOf(y),M=t=>({width:n[t]||0,height:r[t]||0});return{first:M(0),last:M(e-1),widest:M(v),highest:M(w),widths:n,heights:r}}getLabelForValue(t){return t}getPixelForValue(t,e){return NaN}getValueForPixel(t){}getPixelForTick(t){const e=this.ticks;return t<0||t>e.length-1?null:this.getPixelForValue(e[t].value)}getPixelForDecimal(t){this._reversePixels&&(t=1-t);const e=this._startPixel+t*this._length;return Be(this._alignToPixels?wi(this.chart,e,0):e,-32768,32767)}getDecimalForPixel(t){const e=(t-this._startPixel)/this._length;return this._reversePixels?1-e:e}getBasePixel(){return this.getPixelForValue(this.getBaseValue())}getBaseValue(){const{min:t,max:e}=this;return t<0&&e<0?e:t>0&&e>0?t:0}getContext(t){const e=this.ticks||[];if(t>=0&&t<e.length){const i=e[t];return i.$context||(i.$context=function(t,e,i){return Ui(t,{tick:i,index:e,type:"tick"})}(this.getContext(),t,i))}return this.$context||(this.$context=Ui(this.chart.getContext(),{scale:this,type:"scale"}))}_tickSize(){const t=this.options.ticks,e=Re(this.labelRotation),i=Math.abs(Math.cos(e)),s=Math.abs(Math.sin(e)),o=this._getLabelSizes(),n=t.autoSkipPadding||0,r=o?o.widest.width+n:0,a=o?o.highest.height+n:0;return this.isHorizontal()?a*i>r*s?r/i:a/s:a*s<r*i?a/i:r/s}_isVisible(){const t=this.options.display;return"auto"!==t?!!t:this.getMatchingVisibleMetas().length>0}_computeGridLineItems(t){const e=this.axis,i=this.chart,s=this.options,{grid:o,position:n,border:r}=s,a=o.offset,l=this.isHorizontal(),h=this.ticks.length+(a?1:0),c=mn(o),d=[],u=r.setContext(this.getContext()),p=u.display?u.width:0,g=p/2,f=function(t){return wi(i,t,p)};let m,b,x,_,y,v,w,M,k,S,C,A;if("top"===n)m=f(this.bottom),v=this.bottom-c,M=m-g,S=f(t.top)+g,A=t.bottom;else if("bottom"===n)m=f(this.top),S=t.top,A=f(t.bottom)-g,v=m+g,M=this.top+c;else if("left"===n)m=f(this.right),y=this.right-c,w=m-g,k=f(t.left)+g,C=t.right;else if("right"===n)m=f(this.left),k=t.left,C=f(t.right)-g,y=m+g,w=this.left+c;else if("x"===e){if("center"===n)m=f((t.top+t.bottom)/2+.5);else if(Qt(n)){const t=Object.keys(n)[0],e=n[t];m=f(this.chart.scales[t].getPixelForValue(e))}S=t.top,A=t.bottom,v=m+g,M=v+c}else if("y"===e){if("center"===n)m=f((t.left+t.right)/2);else if(Qt(n)){const t=Object.keys(n)[0],e=n[t];m=f(this.chart.scales[t].getPixelForValue(e))}y=m-g,w=y-c,k=t.left,C=t.right}const P=ie(s.ticks.maxTicksLimit,h),D=Math.max(1,Math.ceil(h/P));for(b=0;b<h;b+=D){const t=this.getContext(b),e=o.setContext(t),s=r.setContext(t),n=e.lineWidth,h=e.color,c=s.dash||[],u=s.dashOffset,p=e.tickWidth,g=e.tickColor,f=e.tickBorderDash||[],m=e.tickBorderDashOffset;x=fn(this,b,a),void 0!==x&&(_=wi(i,x,n),l?y=w=k=C=_:v=M=S=A=_,d.push({tx1:y,ty1:v,tx2:w,ty2:M,x1:k,y1:S,x2:C,y2:A,width:n,color:h,borderDash:c,borderDashOffset:u,tickWidth:p,tickColor:g,tickBorderDash:f,tickBorderDashOffset:m}))}return this._ticksLength=h,this._borderValue=m,d}_computeLabelItems(t){const e=this.axis,i=this.options,{position:s,ticks:o}=i,n=this.isHorizontal(),r=this.ticks,{align:a,crossAlign:l,padding:h,mirror:c}=o,d=mn(i.grid),u=d+h,p=c?-h:u,g=-Re(this.labelRotation),f=[];let m,b,x,_,y,v,w,M,k,S,C,A,P="middle";if("top"===s)v=this.bottom-p,w=this._getXAxisLabelAlignment();else if("bottom"===s)v=this.top+p,w=this._getXAxisLabelAlignment();else if("left"===s){const t=this._getYAxisLabelAlignment(d);w=t.textAlign,y=t.x}else if("right"===s){const t=this._getYAxisLabelAlignment(d);w=t.textAlign,y=t.x}else if("x"===e){if("center"===s)v=(t.top+t.bottom)/2+u;else if(Qt(s)){const t=Object.keys(s)[0],e=s[t];v=this.chart.scales[t].getPixelForValue(e)+u}w=this._getXAxisLabelAlignment()}else if("y"===e){if("center"===s)y=(t.left+t.right)/2-u;else if(Qt(s)){const t=Object.keys(s)[0],e=s[t];y=this.chart.scales[t].getPixelForValue(e)}w=this._getYAxisLabelAlignment(d).textAlign}"y"===e&&("start"===a?P="top":"end"===a&&(P="bottom"));const D=this._getLabelSizes();for(m=0,b=r.length;m<b;++m){x=r[m],_=x.label;const t=o.setContext(this.getContext(m));M=this.getPixelForTick(m)+o.labelOffset,k=this._resolveTickFontOptions(m),S=k.lineHeight,C=Zt(_)?_.length:1;const e=C/2,i=t.color,a=t.textStrokeColor,h=t.textStrokeWidth;let d,u=w;if(n?(y=M,"inner"===w&&(u=m===b-1?this.options.reverse?"left":"right":0===m?this.options.reverse?"right":"left":"center"),A="top"===s?"near"===l||0!==g?-C*S+S/2:"center"===l?-D.highest.height/2-e*S+S:-D.highest.height+S/2:"near"===l||0!==g?S/2:"center"===l?D.highest.height/2-e*S:D.highest.height-C*S,c&&(A*=-1),0===g||t.showLabelBackdrop||(y+=S/2*Math.sin(g))):(v=M,A=(1-C)*S/2),t.showLabelBackdrop){const e=Ni(t.backdropPadding),i=D.heights[m],s=D.widths[m];let o=A-e.top,n=0-e.left;switch(P){case"middle":o-=i/2;break;case"bottom":o-=i}switch(w){case"center":n-=s/2;break;case"right":n-=s;break;case"inner":m===b-1?n-=s:m>0&&(n-=s/2)}d={left:n,top:o,width:s+e.width,height:i+e.height,color:t.backdropColor}}f.push({label:_,font:k,textOffset:A,options:{rotation:g,color:i,strokeColor:a,strokeWidth:h,textAlign:u,textBaseline:P,translation:[y,v],backdrop:d}})}return f}_getXAxisLabelAlignment(){const{position:t,ticks:e}=this.options;if(-Re(this.labelRotation))return"top"===t?"left":"right";let i="center";return"start"===e.align?i="left":"end"===e.align?i="right":"inner"===e.align&&(i="inner"),i}_getYAxisLabelAlignment(t){const{position:e,ticks:{crossAlign:i,mirror:s,padding:o}}=this.options,n=t+o,r=this._getLabelSizes().widest.width;let a,l;return"left"===e?s?(l=this.right+o,"near"===i?a="left":"center"===i?(a="center",l+=r/2):(a="right",l+=r)):(l=this.right-n,"near"===i?a="right":"center"===i?(a="center",l-=r/2):(a="left",l=this.left)):"right"===e?s?(l=this.left+o,"near"===i?a="right":"center"===i?(a="center",l-=r/2):(a="left",l-=r)):(l=this.left+n,"near"===i?a="left":"center"===i?(a="center",l+=r/2):(a="right",l=this.right)):a="right",{textAlign:a,x:l}}_computeLabelArea(){if(this.options.ticks.mirror)return;const t=this.chart,e=this.options.position;return"left"===e||"right"===e?{top:0,left:this.left,bottom:t.height,right:this.right}:"top"===e||"bottom"===e?{top:this.top,left:0,bottom:this.bottom,right:t.width}:void 0}drawBackground(){const{ctx:t,options:{backgroundColor:e},left:i,top:s,width:o,height:n}=this;e&&(t.save(),t.fillStyle=e,t.fillRect(i,s,o,n),t.restore())}getLineWidthForValue(t){const e=this.options.grid;if(!this._isVisible()||!e.display)return 0;const i=this.ticks.findIndex(e=>e.value===t);if(i>=0){return e.setContext(this.getContext(i)).lineWidth}return 0}drawGrid(t){const e=this.options.grid,i=this.ctx,s=this._gridLineItems||(this._gridLineItems=this._computeGridLineItems(t));let o,n;const r=(t,e,s)=>{s.width&&s.color&&(i.save(),i.lineWidth=s.width,i.strokeStyle=s.color,i.setLineDash(s.borderDash||[]),i.lineDashOffset=s.borderDashOffset,i.beginPath(),i.moveTo(t.x,t.y),i.lineTo(e.x,e.y),i.stroke(),i.restore())};if(e.display)for(o=0,n=s.length;o<n;++o){const t=s[o];e.drawOnChartArea&&r({x:t.x1,y:t.y1},{x:t.x2,y:t.y2},t),e.drawTicks&&r({x:t.tx1,y:t.ty1},{x:t.tx2,y:t.ty2},{color:t.tickColor,width:t.tickWidth,borderDash:t.tickBorderDash,borderDashOffset:t.tickBorderDashOffset})}}drawBorder(){const{chart:t,ctx:e,options:{border:i,grid:s}}=this,o=i.setContext(this.getContext()),n=i.display?o.width:0;if(!n)return;const r=s.setContext(this.getContext(0)).lineWidth,a=this._borderValue;let l,h,c,d;this.isHorizontal()?(l=wi(t,this.left,n)-n/2,h=wi(t,this.right,r)+r/2,c=d=a):(c=wi(t,this.top,n)-n/2,d=wi(t,this.bottom,r)+r/2,l=h=a),e.save(),e.lineWidth=o.width,e.strokeStyle=o.color,e.beginPath(),e.moveTo(l,c),e.lineTo(h,d),e.stroke(),e.restore()}drawLabels(t){if(!this.options.ticks.display)return;const e=this.ctx,i=this._computeLabelArea();i&&Ai(e,i);const s=this.getLabelItems(t);for(const o of s){const t=o.options,i=o.font;Ri(e,o.label,0,o.textOffset,i,t)}i&&Pi(e)}drawTitle(){const{ctx:t,options:{position:e,title:i,reverse:s}}=this;if(!i.display)return;const o=Wi(i.font),n=Ni(i.padding),r=i.align;let a=o.lineHeight/2;"bottom"===e||"center"===e||Qt(e)?(a+=n.bottom,Zt(i.text)&&(a+=o.lineHeight*(i.text.length-1))):a+=n.top;const{titleX:l,titleY:h,maxWidth:c,rotation:d}=function(t,e,i,s){const{top:o,left:n,bottom:r,right:a,chart:l}=t,{chartArea:h,scales:c}=l;let d,u,p,g=0;const f=r-o,m=a-n;if(t.isHorizontal()){if(u=Ze(s,n,a),Qt(i)){const t=Object.keys(i)[0],s=i[t];p=c[t].getPixelForValue(s)+f-e}else p="center"===i?(h.bottom+h.top)/2+f-e:un(t,i,e);d=a-n}else{if(Qt(i)){const t=Object.keys(i)[0],s=i[t];u=c[t].getPixelForValue(s)-m+e}else u="center"===i?(h.left+h.right)/2-m+e:un(t,i,e);p=Ze(s,r,o),g="left"===i?-ke:ke}return{titleX:u,titleY:p,maxWidth:d,rotation:g}}(this,a,e,r);Ri(t,i.text,0,0,o,{color:i.color,maxWidth:c,rotation:d,textAlign:xn(r,e,s),textBaseline:"middle",translation:[l,h]})}draw(t){this._isVisible()&&(this.drawBackground(),this.drawGrid(t),this.drawBorder(),this.drawTitle(),this.drawLabels(t))}_layers(){const t=this.options,e=t.ticks&&t.ticks.z||0,i=ie(t.grid&&t.grid.z,-1),s=ie(t.border&&t.border.z,0);return this._isVisible()&&this.draw===_n.prototype.draw?[{z:i,draw:t=>{this.drawBackground(),this.drawGrid(t),this.drawTitle()}},{z:s,draw:()=>{this.drawBorder()}},{z:e,draw:t=>{this.drawLabels(t)}}]:[{z:e,draw:t=>{this.draw(t)}}]}getMatchingVisibleMetas(t){const e=this.chart.getSortedVisibleDatasetMetas(),i=this.axis+"AxisID",s=[];let o,n;for(o=0,n=e.length;o<n;++o){const n=e[o];n[i]!==this.id||t&&n.type!==t||s.push(n)}return s}_resolveTickFontOptions(t){return Wi(this.options.ticks.setContext(this.getContext(t)).font)}_maxDigits(){const t=this._resolveTickFontOptions(0).lineHeight;return(this.isHorizontal()?this.width:this.height)/t}}class yn{constructor(t,e,i){this.type=t,this.scope=e,this.override=i,this.items=Object.create(null)}isForType(t){return Object.prototype.isPrototypeOf.call(this.type.prototype,t.prototype)}register(t){const e=Object.getPrototypeOf(t);let i;(function(t){return"id"in t&&"defaults"in t})(e)&&(i=this.register(e));const s=this.items,o=t.id,n=this.scope+"."+o;if(!o)throw new Error("class does not have id: "+t);return o in s||(s[o]=t,function(t,e,i){const s=ce(Object.create(null),[i?_i.get(i):{},_i.get(e),t.defaults]);_i.set(e,s),t.defaultRoutes&&function(t,e){Object.keys(e).forEach(i=>{const s=i.split("."),o=s.pop(),n=[t].concat(s).join("."),r=e[i].split("."),a=r.pop(),l=r.join(".");_i.route(n,o,l,a)})}(e,t.defaultRoutes);t.descriptors&&_i.describe(e,t.descriptors)}(t,n,i),this.override&&_i.override(t.id,t.overrides)),n}get(t){return this.items[t]}unregister(t){const e=this.items,i=t.id,s=this.scope;i in e&&delete e[i],s&&i in _i[s]&&(delete _i[s][i],this.override&&delete gi[i])}}class vn{constructor(){this.controllers=new yn(so,"datasets",!0),this.elements=new yn(hn,"elements"),this.plugins=new yn(Object,"plugins"),this.scales=new yn(_n,"scales"),this._typedRegistries=[this.controllers,this.scales,this.elements]}add(...t){this._each("register",t)}remove(...t){this._each("unregister",t)}addControllers(...t){this._each("register",t,this.controllers)}addElements(...t){this._each("register",t,this.elements)}addPlugins(...t){this._each("register",t,this.plugins)}addScales(...t){this._each("register",t,this.scales)}getController(t){return this._get(t,this.controllers,"controller")}getElement(t){return this._get(t,this.elements,"element")}getPlugin(t){return this._get(t,this.plugins,"plugin")}getScale(t){return this._get(t,this.scales,"scale")}removeControllers(...t){this._each("unregister",t,this.controllers)}removeElements(...t){this._each("unregister",t,this.elements)}removePlugins(...t){this._each("unregister",t,this.plugins)}removeScales(...t){this._each("unregister",t,this.scales)}_each(t,e,i){[...e].forEach(e=>{const s=i||this._getRegistryForType(e);i||s.isForType(e)||s===this.plugins&&e.id?this._exec(t,s,e):ne(e,e=>{const s=i||this._getRegistryForType(e);this._exec(t,s,e)})})}_exec(t,e,i){const s=fe(t);oe(i["before"+s],[],i),e[t](i),oe(i["after"+s],[],i)}_getRegistryForType(t){for(let e=0;e<this._typedRegistries.length;e++){const i=this._typedRegistries[e];if(i.isForType(t))return i}return this.plugins}_get(t,e,i){const s=e.get(t);if(void 0===s)throw new Error('"'+t+'" is not a registered '+i+".");return s}}var wn=new vn;class Mn{constructor(){this._init=void 0}notify(t,e,i,s){if("beforeInit"===e&&(this._init=this._createDescriptors(t,!0),this._notify(this._init,t,"install")),void 0===this._init)return;const o=s?this._descriptors(t).filter(s):this._descriptors(t),n=this._notify(o,t,e,i);return"afterDestroy"===e&&(this._notify(o,t,"stop"),this._notify(this._init,t,"uninstall"),this._init=void 0),n}_notify(t,e,i,s){s=s||{};for(const o of t){const t=o.plugin;if(!1===oe(t[i],[e,s,o.options],t)&&s.cancelable)return!1}return!0}invalidate(){Jt(this._cache)||(this._oldCache=this._cache,this._cache=void 0)}_descriptors(t){if(this._cache)return this._cache;const e=this._cache=this._createDescriptors(t);return this._notifyStateChanges(t),e}_createDescriptors(t,e){const i=t&&t.config,s=ie(i.options&&i.options.plugins,{}),o=function(t){const e={},i=[],s=Object.keys(wn.plugins.items);for(let n=0;n<s.length;n++)i.push(wn.getPlugin(s[n]));const o=t.plugins||[];for(let n=0;n<o.length;n++){const t=o[n];-1===i.indexOf(t)&&(i.push(t),e[t.id]=!0)}return{plugins:i,localIds:e}}(i);return!1!==s||e?function(t,{plugins:e,localIds:i},s,o){const n=[],r=t.getContext();for(const a of e){const e=a.id,l=kn(s[e],o);null!==l&&n.push({plugin:a,options:Sn(t.config,{plugin:a,local:i[e]},l,r)})}return n}(t,o,s,e):[]}_notifyStateChanges(t){const e=this._oldCache||[],i=this._cache,s=(t,e)=>t.filter(t=>!e.some(e=>t.plugin.id===e.plugin.id));this._notify(s(e,i),t,"stop"),this._notify(s(i,e),t,"start")}}function kn(t,e){return e||!1!==t?!0===t?{}:t:null}function Sn(t,{plugin:e,local:i},s,o){const n=t.pluginScopeKeys(e),r=t.getOptionScopes(s,n);return i&&e.defaults&&r.push(e.defaults),t.createResolver(r,o,[""],{scriptable:!1,indexable:!1,allKeys:!0})}function Cn(t,e){const i=_i.datasets[t]||{};return((e.datasets||{})[t]||{}).indexAxis||e.indexAxis||i.indexAxis||"x"}function An(t){if("x"===t||"y"===t||"r"===t)return t}function Pn(t){return"top"===t||"bottom"===t?"x":"left"===t||"right"===t?"y":void 0}function Dn(t,...e){if(An(t))return t;for(const i of e){const e=i.axis||Pn(i.position)||t.length>1&&An(t[0].toLowerCase());if(e)return e}throw new Error(`Cannot determine type of '${t}' axis. Please provide 'axis' or 'position' option.`)}function En(t,e,i){if(i[e+"AxisID"]===t)return{axis:e}}function On(t,e){const i=gi[t.type]||{scales:{}},s=e.scales||{},o=Cn(t.type,e),n=Object.create(null);return Object.keys(s).forEach(e=>{const r=s[e];if(!Qt(r))return console.error(`Invalid scale configuration for scale: ${e}`);if(r._proxy)return console.warn(`Ignoring resolver passed as options for scale: ${e}`);const a=Dn(e,r,function(t,e){if(e.data&&e.data.datasets){const i=e.data.datasets.filter(e=>e.xAxisID===t||e.yAxisID===t);if(i.length)return En(t,"x",i[0])||En(t,"y",i[0])}return{}}(e,t),_i.scales[r.type]),l=function(t,e){return t===e?"_index_":"_value_"}(a,o),h=i.scales||{};n[e]=de(Object.create(null),[{axis:a},r,h[a],h[l]])}),t.data.datasets.forEach(i=>{const o=i.type||t.type,r=i.indexAxis||Cn(o,e),a=(gi[o]||{}).scales||{};Object.keys(a).forEach(t=>{const e=function(t,e){let i=t;return"_index_"===t?i=e:"_value_"===t&&(i="x"===e?"y":"x"),i}(t,r),o=i[e+"AxisID"]||e;n[o]=n[o]||Object.create(null),de(n[o],[{axis:e},s[o],a[t]])})}),Object.keys(n).forEach(t=>{const e=n[t];de(e,[_i.scales[e.type],_i.scale])}),n}function Tn(t){const e=t.options||(t.options={});e.plugins=ie(e.plugins,{}),e.scales=On(t,e)}function Rn(t){return(t=t||{}).datasets=t.datasets||[],t.labels=t.labels||[],t}const Ln=new Map,$n=new Set;function In(t,e){let i=Ln.get(t);return i||(i=e(),Ln.set(t,i),$n.add(i)),i}const zn=(t,e,i)=>{const s=ge(e,i);void 0!==s&&t.add(s)};class Fn{constructor(t){this._config=function(t){return(t=t||{}).data=Rn(t.data),Tn(t),t}(t),this._scopeCache=new Map,this._resolverCache=new Map}get platform(){return this._config.platform}get type(){return this._config.type}set type(t){this._config.type=t}get data(){return this._config.data}set data(t){this._config.data=Rn(t)}get options(){return this._config.options}set options(t){this._config.options=t}get plugins(){return this._config.plugins}update(){const t=this._config;this.clearCache(),Tn(t)}clearCache(){this._scopeCache.clear(),this._resolverCache.clear()}datasetScopeKeys(t){return In(t,()=>[[`datasets.${t}`,""]])}datasetAnimationScopeKeys(t,e){return In(`${t}.transition.${e}`,()=>[[`datasets.${t}.transitions.${e}`,`transitions.${e}`],[`datasets.${t}`,""]])}datasetElementScopeKeys(t,e){return In(`${t}-${e}`,()=>[[`datasets.${t}.elements.${e}`,`datasets.${t}`,`elements.${e}`,""]])}pluginScopeKeys(t){const e=t.id;return In(`${this.type}-plugin-${e}`,()=>[[`plugins.${e}`,...t.additionalOptionScopes||[]]])}_cachedScopes(t,e){const i=this._scopeCache;let s=i.get(t);return s&&!e||(s=new Map,i.set(t,s)),s}getOptionScopes(t,e,i){const{options:s,type:o}=this,n=this._cachedScopes(t,i),r=n.get(e);if(r)return r;const a=new Set;e.forEach(e=>{t&&(a.add(t),e.forEach(e=>zn(a,t,e))),e.forEach(t=>zn(a,s,t)),e.forEach(t=>zn(a,gi[o]||{},t)),e.forEach(t=>zn(a,_i,t)),e.forEach(t=>zn(a,fi,t))});const l=Array.from(a);return 0===l.length&&l.push(Object.create(null)),$n.has(e)&&n.set(e,l),l}chartOptionScopes(){const{options:t,type:e}=this;return[t,gi[e]||{},_i.datasets[e]||{},{type:e},_i,fi]}resolveNamedOptions(t,e,i,s=[""]){const o={$shared:!0},{resolver:n,subPrefixes:r}=Hn(this._resolverCache,t,s);let a=n;if(function(t,e){const{isScriptable:i,isIndexable:s}=qi(t);for(const o of e){const e=i(o),n=s(o),r=(n||e)&&t[o];if(e&&(be(r)||Vn(r))||n&&Zt(r))return!0}return!1}(n,e)){o.$shared=!1;a=Xi(n,i=be(i)?i():i,this.createResolver(t,i,r))}for(const l of e)o[l]=a[l];return o}createResolver(t,e,i=[""],s){const{resolver:o}=Hn(this._resolverCache,t,i);return Qt(e)?Xi(o,e,void 0,s):o}}function Hn(t,e,i){let s=t.get(e);s||(s=new Map,t.set(e,s));const o=i.join();let n=s.get(o);if(!n){n={resolver:Yi(e,i),subPrefixes:i.filter(t=>!t.toLowerCase().includes("hover"))},s.set(o,n)}return n}const Vn=t=>Qt(t)&&Object.getOwnPropertyNames(t).some(e=>be(t[e]));const Bn=["top","bottom","left","right","chartArea"];function Nn(t,e){return"top"===t||"bottom"===t||-1===Bn.indexOf(t)&&"x"===e}function Wn(t,e){return function(i,s){return i[t]===s[t]?i[e]-s[e]:i[t]-s[t]}}function jn(t){const e=t.chart,i=e.options.animation;e.notifyPlugins("afterRender"),oe(i&&i.onComplete,[t],e)}function Un(t){const e=t.chart,i=e.options.animation;oe(i&&i.onProgress,[t],e)}function Yn(t){return ps()&&"string"==typeof t?t=document.getElementById(t):t&&t.length&&(t=t[0]),t&&t.canvas&&(t=t.canvas),t}const Xn={},qn=t=>{const e=Yn(t);return Object.values(Xn).filter(t=>t.canvas===e).pop()};function Gn(t,e,i){const s=Object.keys(t);for(const o of s){const s=+o;if(s>=e){const n=t[o];delete t[o],(i>0||s>e)&&(t[s+i]=n)}}}class Kn{static register(...t){wn.add(...t),Jn()}static unregister(...t){wn.remove(...t),Jn()}constructor(t,e){const i=this.config=new Fn(e),s=Yn(t),o=qn(s);if(o)throw new Error("Canvas is already in use. Chart with ID '"+o.id+"' must be destroyed before the canvas with ID '"+o.canvas.id+"' can be reused.");const n=i.createResolver(i.chartOptionScopes(),this.getContext());this.platform=new(i.platform||function(t){return!ps()||"undefined"!=typeof OffscreenCanvas&&t instanceof OffscreenCanvas?Yo:ln}(s)),this.platform.updateConfig(i);const r=this.platform.acquireContext(s,n.aspectRatio),a=r&&r.canvas,l=a&&a.height,h=a&&a.width;this.id=Kt(),this.ctx=r,this.canvas=a,this.width=h,this.height=l,this._options=n,this._aspectRatio=this.aspectRatio,this._layers=[],this._metasets=[],this._stacks=void 0,this.boxes=[],this.currentDevicePixelRatio=void 0,this.chartArea=void 0,this._active=[],this._lastEvent=void 0,this._listeners={},this._responsiveListeners=void 0,this._sortedMetasets=[],this.scales={},this._plugins=new Mn,this.$proxies={},this._hiddenIndices={},this.attached=!1,this._animationsDisabled=void 0,this.$context=void 0,this._doResize=function(t,e){let i;return function(...s){return e?(clearTimeout(i),i=setTimeout(t,e,s)):t.apply(this,s),e}}(t=>this.update(t),n.resizeDelay||0),this._dataChanges=[],Xn[this.id]=this,r&&a?(Bs.listen(this,"complete",jn),Bs.listen(this,"progress",Un),this._initialize(),this.attached&&this.update()):console.error("Failed to create chart: can't acquire context from the given item")}get aspectRatio(){const{options:{aspectRatio:t,maintainAspectRatio:e},width:i,height:s,_aspectRatio:o}=this;return Jt(t)?e&&o?o:s?i/s:null:t}get data(){return this.config.data}set data(t){this.config.data=t}get options(){return this._options}set options(t){this.config.options=t}get registry(){return wn}_initialize(){return this.notifyPlugins("beforeInit"),this.options.responsive?this.resize():ws(this,this.options.devicePixelRatio),this.bindEvents(),this.notifyPlugins("afterInit"),this}clear(){return Mi(this.canvas,this.ctx),this}stop(){return Bs.stop(this),this}resize(t,e){Bs.running(this)?this._resizeBeforeDraw={width:t,height:e}:this._resize(t,e)}_resize(t,e){const i=this.options,s=this.canvas,o=i.maintainAspectRatio&&this.aspectRatio,n=this.platform.getMaximumSize(s,t,e,o),r=i.devicePixelRatio||this.platform.getDevicePixelRatio(),a=this.width?"resize":"attach";this.width=n.width,this.height=n.height,this._aspectRatio=this.aspectRatio,ws(this,r,!0)&&(this.notifyPlugins("resize",{size:n}),oe(i.onResize,[this,n],this),this.attached&&this._doResize(a)&&this.render())}ensureScalesHaveIDs(){ne(this.options.scales||{},(t,e)=>{t.id=e})}buildOrUpdateScales(){const t=this.options,e=t.scales,i=this.scales,s=Object.keys(i).reduce((t,e)=>(t[e]=!1,t),{});let o=[];e&&(o=o.concat(Object.keys(e).map(t=>{const i=e[t],s=Dn(t,i),o="r"===s,n="x"===s;return{options:i,dposition:o?"chartArea":n?"bottom":"left",dtype:o?"radialLinear":n?"category":"linear"}}))),ne(o,e=>{const o=e.options,n=o.id,r=Dn(n,o),a=ie(o.type,e.dtype);void 0!==o.position&&Nn(o.position,r)===Nn(e.dposition)||(o.position=e.dposition),s[n]=!0;let l=null;if(n in i&&i[n].type===a)l=i[n];else{l=new(wn.getScale(a))({id:n,type:a,ctx:this.ctx,chart:this}),i[l.id]=l}l.init(o,t)}),ne(s,(t,e)=>{t||delete i[e]}),ne(i,t=>{jo.configure(this,t,t.options),jo.addBox(this,t)})}_updateMetasets(){const t=this._metasets,e=this.data.datasets.length,i=t.length;if(t.sort((t,e)=>t.index-e.index),i>e){for(let t=e;t<i;++t)this._destroyDatasetMeta(t);t.splice(e,i-e)}this._sortedMetasets=t.slice(0).sort(Wn("order","index"))}_removeUnreferencedMetasets(){const{_metasets:t,data:{datasets:e}}=this;t.length>e.length&&delete this._stacks,t.forEach((t,i)=>{0===e.filter(e=>e===t._dataset).length&&this._destroyDatasetMeta(i)})}buildOrUpdateControllers(){const t=[],e=this.data.datasets;let i,s;for(this._removeUnreferencedMetasets(),i=0,s=e.length;i<s;i++){const s=e[i];let o=this.getDatasetMeta(i);const n=s.type||this.config.type;if(o.type&&o.type!==n&&(this._destroyDatasetMeta(i),o=this.getDatasetMeta(i)),o.type=n,o.indexAxis=s.indexAxis||Cn(n,this.options),o.order=s.order||0,o.index=i,o.label=""+s.label,o.visible=this.isDatasetVisible(i),o.controller)o.controller.updateIndex(i),o.controller.linkScales();else{const e=wn.getController(n),{datasetElementType:s,dataElementType:r}=_i.datasets[n];Object.assign(e,{dataElementType:wn.getElement(r),datasetElementType:s&&wn.getElement(s)}),o.controller=new e(this,i),t.push(o.controller)}}return this._updateMetasets(),t}_resetElements(){ne(this.data.datasets,(t,e)=>{this.getDatasetMeta(e).controller.reset()},this)}reset(){this._resetElements(),this.notifyPlugins("reset")}update(t){const e=this.config;e.update();const i=this._options=e.createResolver(e.chartOptionScopes(),this.getContext()),s=this._animationsDisabled=!i.animation;if(this._updateScales(),this._checkEventBindings(),this._updateHiddenIndices(),this._plugins.invalidate(),!1===this.notifyPlugins("beforeUpdate",{mode:t,cancelable:!0}))return;const o=this.buildOrUpdateControllers();this.notifyPlugins("beforeElementsUpdate");let n=0;for(let l=0,h=this.data.datasets.length;l<h;l++){const{controller:t}=this.getDatasetMeta(l),e=!s&&-1===o.indexOf(t);t.buildOrUpdateElements(e),n=Math.max(+t.getMaxOverflow(),n)}n=this._minPadding=i.layout.autoPadding?n:0,this._updateLayout(n),s||ne(o,t=>{t.reset()}),this._updateDatasets(t),this.notifyPlugins("afterUpdate",{mode:t}),this._layers.sort(Wn("z","_idx"));const{_active:r,_lastEvent:a}=this;a?this._eventHandler(a,!0):r.length&&this._updateHoverStyles(r,r,!0),this.render()}_updateScales(){ne(this.scales,t=>{jo.removeBox(this,t)}),this.ensureScalesHaveIDs(),this.buildOrUpdateScales()}_checkEventBindings(){const t=this.options,e=new Set(Object.keys(this._listeners)),i=new Set(t.events);xe(e,i)&&!!this._responsiveListeners===t.responsive||(this.unbindEvents(),this.bindEvents())}_updateHiddenIndices(){const{_hiddenIndices:t}=this,e=this._getUniformDataChanges()||[];for(const{method:i,start:s,count:o}of e){Gn(t,s,"_removeElements"===i?-o:o)}}_getUniformDataChanges(){const t=this._dataChanges;if(!t||!t.length)return;this._dataChanges=[];const e=this.data.datasets.length,i=e=>new Set(t.filter(t=>t[0]===e).map((t,e)=>e+","+t.splice(1).join(","))),s=i(0);for(let o=1;o<e;o++)if(!xe(s,i(o)))return;return Array.from(s).map(t=>t.split(",")).map(t=>({method:t[1],start:+t[2],count:+t[3]}))}_updateLayout(t){if(!1===this.notifyPlugins("beforeLayout",{cancelable:!0}))return;jo.update(this,this.width,this.height,t);const e=this.chartArea,i=e.width<=0||e.height<=0;this._layers=[],ne(this.boxes,t=>{i&&"chartArea"===t.position||(t.configure&&t.configure(),this._layers.push(...t._layers()))},this),this._layers.forEach((t,e)=>{t._idx=e}),this.notifyPlugins("afterLayout")}_updateDatasets(t){if(!1!==this.notifyPlugins("beforeDatasetsUpdate",{mode:t,cancelable:!0})){for(let t=0,e=this.data.datasets.length;t<e;++t)this.getDatasetMeta(t).controller.configure();for(let e=0,i=this.data.datasets.length;e<i;++e)this._updateDataset(e,be(t)?t({datasetIndex:e}):t);this.notifyPlugins("afterDatasetsUpdate",{mode:t})}}_updateDataset(t,e){const i=this.getDatasetMeta(t),s={meta:i,index:t,mode:e,cancelable:!0};!1!==this.notifyPlugins("beforeDatasetUpdate",s)&&(i.controller._update(e),s.cancelable=!1,this.notifyPlugins("afterDatasetUpdate",s))}render(){!1!==this.notifyPlugins("beforeRender",{cancelable:!0})&&(Bs.has(this)?this.attached&&!Bs.running(this)&&Bs.start(this):(this.draw(),jn({chart:this})))}draw(){let t;if(this._resizeBeforeDraw){const{width:t,height:e}=this._resizeBeforeDraw;this._resizeBeforeDraw=null,this._resize(t,e)}if(this.clear(),this.width<=0||this.height<=0)return;if(!1===this.notifyPlugins("beforeDraw",{cancelable:!0}))return;const e=this._layers;for(t=0;t<e.length&&e[t].z<=0;++t)e[t].draw(this.chartArea);for(this._drawDatasets();t<e.length;++t)e[t].draw(this.chartArea);this.notifyPlugins("afterDraw")}_getSortedDatasetMetas(t){const e=this._sortedMetasets,i=[];let s,o;for(s=0,o=e.length;s<o;++s){const o=e[s];t&&!o.visible||i.push(o)}return i}getSortedVisibleDatasetMetas(){return this._getSortedDatasetMetas(!0)}_drawDatasets(){if(!1===this.notifyPlugins("beforeDatasetsDraw",{cancelable:!0}))return;const t=this.getSortedVisibleDatasetMetas();for(let e=t.length-1;e>=0;--e)this._drawDataset(t[e]);this.notifyPlugins("afterDatasetsDraw")}_drawDataset(t){const e=this.ctx,i={meta:t,index:t.index,cancelable:!0},s=Hs(this,t);!1!==this.notifyPlugins("beforeDatasetDraw",i)&&(s&&Ai(e,s),t.controller.draw(),s&&Pi(e),i.cancelable=!1,this.notifyPlugins("afterDatasetDraw",i))}isPointInArea(t){return Ci(t,this.chartArea,this._minPadding)}getElementsAtEventForMode(t,e,i,s){const o=Oo.modes[e];return"function"==typeof o?o(this,t,i,s):[]}getDatasetMeta(t){const e=this.data.datasets[t],i=this._metasets;let s=i.filter(t=>t&&t._dataset===e).pop();return s||(s={type:null,data:[],dataset:null,controller:null,hidden:null,xAxisID:null,yAxisID:null,order:e&&e.order||0,index:t,_dataset:e,_parsed:[],_sorted:!1},i.push(s)),s}getContext(){return this.$context||(this.$context=Ui(null,{chart:this,type:"chart"}))}getVisibleDatasetCount(){return this.getSortedVisibleDatasetMetas().length}isDatasetVisible(t){const e=this.data.datasets[t];if(!e)return!1;const i=this.getDatasetMeta(t);return"boolean"==typeof i.hidden?!i.hidden:!e.hidden}setDatasetVisibility(t,e){this.getDatasetMeta(t).hidden=!e}toggleDataVisibility(t){this._hiddenIndices[t]=!this._hiddenIndices[t]}getDataVisibility(t){return!this._hiddenIndices[t]}_updateVisibility(t,e,i){const s=i?"show":"hide",o=this.getDatasetMeta(t),n=o.controller._resolveAnimations(void 0,s);me(e)?(o.data[e].hidden=!i,this.update()):(this.setDatasetVisibility(t,i),n.update(o,{visible:i}),this.update(e=>e.datasetIndex===t?s:void 0))}hide(t,e){this._updateVisibility(t,e,!1)}show(t,e){this._updateVisibility(t,e,!0)}_destroyDatasetMeta(t){const e=this._metasets[t];e&&e.controller&&e.controller._destroy(),delete this._metasets[t]}_stop(){let t,e;for(this.stop(),Bs.remove(this),t=0,e=this.data.datasets.length;t<e;++t)this._destroyDatasetMeta(t)}destroy(){this.notifyPlugins("beforeDestroy");const{canvas:t,ctx:e}=this;this._stop(),this.config.clearCache(),t&&(this.unbindEvents(),Mi(t,e),this.platform.releaseContext(e),this.canvas=null,this.ctx=null),delete Xn[this.id],this.notifyPlugins("afterDestroy")}toBase64Image(...t){return this.canvas.toDataURL(...t)}bindEvents(){this.bindUserEvents(),this.options.responsive?this.bindResponsiveEvents():this.attached=!0}bindUserEvents(){const t=this._listeners,e=this.platform,i=(i,s)=>{e.addEventListener(this,i,s),t[i]=s},s=(t,e,i)=>{t.offsetX=e,t.offsetY=i,this._eventHandler(t)};ne(this.options.events,t=>i(t,s))}bindResponsiveEvents(){this._responsiveListeners||(this._responsiveListeners={});const t=this._responsiveListeners,e=this.platform,i=(i,s)=>{e.addEventListener(this,i,s),t[i]=s},s=(i,s)=>{t[i]&&(e.removeEventListener(this,i,s),delete t[i])},o=(t,e)=>{this.canvas&&this.resize(t,e)};let n;const r=()=>{s("attach",r),this.attached=!0,this.resize(),i("resize",o),i("detach",n)};n=()=>{this.attached=!1,s("resize",o),this._stop(),this._resize(0,0),i("attach",r)},e.isAttached(this.canvas)?r():n()}unbindEvents(){ne(this._listeners,(t,e)=>{this.platform.removeEventListener(this,e,t)}),this._listeners={},ne(this._responsiveListeners,(t,e)=>{this.platform.removeEventListener(this,e,t)}),this._responsiveListeners=void 0}updateHoverStyle(t,e,i){const s=i?"set":"remove";let o,n,r,a;for("dataset"===e&&(o=this.getDatasetMeta(t[0].datasetIndex),o.controller["_"+s+"DatasetHoverStyle"]()),r=0,a=t.length;r<a;++r){n=t[r];const e=n&&this.getDatasetMeta(n.datasetIndex).controller;e&&e[s+"HoverStyle"](n.element,n.datasetIndex,n.index)}}getActiveElements(){return this._active||[]}setActiveElements(t){const e=this._active||[],i=t.map(({datasetIndex:t,index:e})=>{const i=this.getDatasetMeta(t);if(!i)throw new Error("No dataset found at index "+t);return{datasetIndex:t,element:i.data[e],index:e}});!re(i,e)&&(this._active=i,this._lastEvent=null,this._updateHoverStyles(i,e))}notifyPlugins(t,e,i){return this._plugins.notify(this,t,e,i)}isPluginEnabled(t){return 1===this._plugins._cache.filter(e=>e.plugin.id===t).length}_updateHoverStyles(t,e,i){const s=this.options.hover,o=(t,e)=>t.filter(t=>!e.some(e=>t.datasetIndex===e.datasetIndex&&t.index===e.index)),n=o(e,t),r=i?t:o(t,e);n.length&&this.updateHoverStyle(n,s.mode,!1),r.length&&s.mode&&this.updateHoverStyle(r,s.mode,!0)}_eventHandler(t,e){const i={event:t,replay:e,cancelable:!0,inChartArea:this.isPointInArea(t)},s=e=>(e.options.events||this.options.events).includes(t.native.type);if(!1===this.notifyPlugins("beforeEvent",i,s))return;const o=this._handleEvent(t,e,i.inChartArea);return i.cancelable=!1,this.notifyPlugins("afterEvent",i,s),(o||i.changed)&&this.render(),this}_handleEvent(t,e,i){const{_active:s=[],options:o}=this,n=e,r=this._getActiveElements(t,s,i,n),a=function(t){return"mouseup"===t.type||"click"===t.type||"contextmenu"===t.type}(t),l=function(t,e,i,s){return i&&"mouseout"!==t.type?s?e:t:null}(t,this._lastEvent,i,a);i&&(this._lastEvent=null,oe(o.onHover,[t,r,this],this),a&&oe(o.onClick,[t,r,this],this));const h=!re(r,s);return(h||e)&&(this._active=r,this._updateHoverStyles(r,s,e)),this._lastEvent=l,h}_getActiveElements(t,e,i,s){if("mouseout"===t.type)return[];if(!i)return e;const o=this.options.hover;return this.getElementsAtEventForMode(t,o.mode,o,s)}}function Jn(){return ne(Kn.instances,t=>t._plugins.invalidate())}function Zn(t,e,i,s){const o=Hi(t.options.borderRadius,["outerStart","outerEnd","innerStart","innerEnd"]);const n=(i-e)/2,r=Math.min(n,s*e/2),a=t=>{const e=(i-Math.min(n,t))*s/2;return Be(t,0,Math.min(n,e))};return{outerStart:a(o.outerStart),outerEnd:a(o.outerEnd),innerStart:Be(o.innerStart,0,r),innerEnd:Be(o.innerEnd,0,r)}}function Qn(t,e,i,s){return{x:i+t*Math.cos(e),y:s+t*Math.sin(e)}}function tr(t,e,i,s,o,n){const{x:r,y:a,startAngle:l,pixelMargin:h,innerRadius:c}=e,d=Math.max(e.outerRadius+s+i-h,0),u=c>0?c+s+i+h:0;let p=0;const g=o-l;if(s){const t=((c>0?c-s:0)+(d>0?d-s:0))/2;p=(g-(0!==t?g*t/(t+s):g))/2}const f=(g-Math.max(.001,g*d-i/_e)/d)/2,m=l+f+p,b=o-f-p,{outerStart:x,outerEnd:_,innerStart:y,innerEnd:v}=Zn(e,u,d,b-m),w=d-x,M=d-_,k=m+x/w,S=b-_/M,C=u+y,A=u+v,P=m+y/C,D=b-v/A;if(t.beginPath(),n){const e=(k+S)/2;if(t.arc(r,a,d,k,e),t.arc(r,a,d,e,S),_>0){const e=Qn(M,S,r,a);t.arc(e.x,e.y,_,S,b+ke)}const i=Qn(A,b,r,a);if(t.lineTo(i.x,i.y),v>0){const e=Qn(A,D,r,a);t.arc(e.x,e.y,v,b+ke,D+Math.PI)}const s=(b-v/u+(m+y/u))/2;if(t.arc(r,a,u,b-v/u,s,!0),t.arc(r,a,u,s,m+y/u,!0),y>0){const e=Qn(C,P,r,a);t.arc(e.x,e.y,y,P+Math.PI,m-ke)}const o=Qn(w,m,r,a);if(t.lineTo(o.x,o.y),x>0){const e=Qn(w,k,r,a);t.arc(e.x,e.y,x,m-ke,k)}}else{t.moveTo(r,a);const e=Math.cos(k)*d+r,i=Math.sin(k)*d+a;t.lineTo(e,i);const s=Math.cos(S)*d+r,o=Math.sin(S)*d+a;t.lineTo(s,o)}t.closePath()}function er(t,e,i,s,o){const{fullCircles:n,startAngle:r,circumference:a,options:l}=e,{borderWidth:h,borderJoinStyle:c,borderDash:d,borderDashOffset:u,borderRadius:p}=l,g="inner"===l.borderAlign;if(!h)return;t.setLineDash(d||[]),t.lineDashOffset=u,g?(t.lineWidth=2*h,t.lineJoin=c||"round"):(t.lineWidth=h,t.lineJoin=c||"bevel");let f=e.endAngle;if(n){tr(t,e,i,s,f,o);for(let e=0;e<n;++e)t.stroke();isNaN(a)||(f=r+(a%ye||ye))}g&&function(t,e,i){const{startAngle:s,pixelMargin:o,x:n,y:r,outerRadius:a,innerRadius:l}=e;let h=o/a;t.beginPath(),t.arc(n,r,a,s-h,i+h),l>o?(h=o/l,t.arc(n,r,l,i+h,s-h,!0)):t.arc(n,r,o,i+ke,s-ke),t.closePath(),t.clip()}(t,e,f),l.selfJoin&&f-r>=_e&&0===p&&"miter"!==c&&function(t,e,i){const{startAngle:s,x:o,y:n,outerRadius:r,innerRadius:a,options:l}=e,{borderWidth:h,borderJoinStyle:c}=l,d=Math.min(h/r,He(s-i));if(t.beginPath(),t.arc(o,n,r-h/2,s+d/2,i-d/2),a>0){const e=Math.min(h/a,He(s-i));t.arc(o,n,a+h/2,i-e/2,s+e/2,!0)}else{const e=Math.min(h/2,r*He(s-i));if("round"===c)t.arc(o,n,e,i-_e/2,s+_e/2,!0);else if("bevel"===c){const r=2*e*e,a=-r*Math.cos(i+_e/2)+o,l=-r*Math.sin(i+_e/2)+n,h=r*Math.cos(s+_e/2)+o,c=r*Math.sin(s+_e/2)+n;t.lineTo(a,l),t.lineTo(h,c)}}t.closePath(),t.moveTo(0,0),t.rect(0,0,t.canvas.width,t.canvas.height),t.clip("evenodd")}(t,e,f),n||(tr(t,e,i,s,f,o),t.stroke())}s(Kn,"defaults",_i),s(Kn,"instances",Xn),s(Kn,"overrides",gi),s(Kn,"registry",wn),s(Kn,"version","4.5.1"),s(Kn,"getChart",qn);class ir extends hn{constructor(t){super(),s(this,"circumference"),s(this,"endAngle"),s(this,"fullCircles"),s(this,"innerRadius"),s(this,"outerRadius"),s(this,"pixelMargin"),s(this,"startAngle"),this.options=void 0,this.circumference=void 0,this.startAngle=void 0,this.endAngle=void 0,this.innerRadius=void 0,this.outerRadius=void 0,this.pixelMargin=0,this.fullCircles=0,t&&Object.assign(this,t)}inRange(t,e,i){const s=this.getProps(["x","y"],i),{angle:o,distance:n}=Ie(s,{x:t,y:e}),{startAngle:r,endAngle:a,innerRadius:l,outerRadius:h,circumference:c}=this.getProps(["startAngle","endAngle","innerRadius","outerRadius","circumference"],i),d=(this.options.spacing+this.options.borderWidth)/2,u=ie(c,a-r),p=Ve(o,r,a)&&r!==a,g=u>=ye||p,f=Ne(n,l+d,h+d);return g&&f}getCenterPoint(t){const{x:e,y:i,startAngle:s,endAngle:o,innerRadius:n,outerRadius:r}=this.getProps(["x","y","startAngle","endAngle","innerRadius","outerRadius"],t),{offset:a,spacing:l}=this.options,h=(s+o)/2,c=(n+r+l+a)/2;return{x:e+Math.cos(h)*c,y:i+Math.sin(h)*c}}tooltipPosition(t){return this.getCenterPoint(t)}draw(t){const{options:e,circumference:i}=this,s=(e.offset||0)/4,o=(e.spacing||0)/2,n=e.circular;if(this.pixelMargin="inner"===e.borderAlign?.33:0,this.fullCircles=i>ye?Math.floor(i/ye):0,0===i||this.innerRadius<0||this.outerRadius<0)return;t.save();const r=(this.startAngle+this.endAngle)/2;t.translate(Math.cos(r)*s,Math.sin(r)*s);const a=s*(1-Math.sin(Math.min(_e,i||0)));t.fillStyle=e.backgroundColor,t.strokeStyle=e.borderColor,function(t,e,i,s,o){const{fullCircles:n,startAngle:r,circumference:a}=e;let l=e.endAngle;if(n){tr(t,e,i,s,l,o);for(let e=0;e<n;++e)t.fill();isNaN(a)||(l=r+(a%ye||ye))}tr(t,e,i,s,l,o),t.fill()}(t,this,a,o,n),er(t,this,a,o,n),t.restore()}}function sr(t,e,i=e){t.lineCap=ie(i.borderCapStyle,e.borderCapStyle),t.setLineDash(ie(i.borderDash,e.borderDash)),t.lineDashOffset=ie(i.borderDashOffset,e.borderDashOffset),t.lineJoin=ie(i.borderJoinStyle,e.borderJoinStyle),t.lineWidth=ie(i.borderWidth,e.borderWidth),t.strokeStyle=ie(i.borderColor,e.borderColor)}function or(t,e,i){t.lineTo(i.x,i.y)}function nr(t,e,i={}){const s=t.length,{start:o=0,end:n=s-1}=i,{start:r,end:a}=e,l=Math.max(o,r),h=Math.min(n,a),c=o<r&&n<r||o>a&&n>a;return{count:s,start:l,loop:e.loop,ilen:h<l&&!c?s+h-l:h-l}}function rr(t,e,i,s){const{points:o,options:n}=e,{count:r,start:a,loop:l,ilen:h}=nr(o,i,s),c=function(t){return t.stepped?Di:t.tension||"monotone"===t.cubicInterpolationMode?Ei:or}(n);let d,u,p,{move:g=!0,reverse:f}=s||{};for(d=0;d<=h;++d)u=o[(a+(f?h-d:d))%r],u.skip||(g?(t.moveTo(u.x,u.y),g=!1):c(t,p,u,f,n.stepped),p=u);return l&&(u=o[(a+(f?h:0))%r],c(t,p,u,f,n.stepped)),!!l}function ar(t,e,i,s){const o=e.points,{count:n,start:r,ilen:a}=nr(o,i,s),{move:l=!0,reverse:h}=s||{};let c,d,u,p,g,f,m=0,b=0;const x=t=>(r+(h?a-t:t))%n,_=()=>{p!==g&&(t.lineTo(m,g),t.lineTo(m,p),t.lineTo(m,f))};for(l&&(d=o[x(0)],t.moveTo(d.x,d.y)),c=0;c<=a;++c){if(d=o[x(c)],d.skip)continue;const e=d.x,i=d.y,s=0|e;s===u?(i<p?p=i:i>g&&(g=i),m=(b*m+e)/++b):(_(),t.lineTo(e,i),u=s,b=0,p=g=i),f=i}_()}function lr(t){const e=t.options,i=e.borderDash&&e.borderDash.length;return!(t._decimated||t._loop||e.tension||"monotone"===e.cubicInterpolationMode||e.stepped||i)?ar:rr}s(ir,"id","arc"),s(ir,"defaults",{borderAlign:"center",borderColor:"#fff",borderDash:[],borderDashOffset:0,borderJoinStyle:void 0,borderRadius:0,borderWidth:2,offset:0,spacing:0,angle:void 0,circular:!0,selfJoin:!1}),s(ir,"defaultRoutes",{backgroundColor:"backgroundColor"}),s(ir,"descriptors",{_scriptable:!0,_indexable:t=>"borderDash"!==t});const hr="function"==typeof Path2D;function cr(t,e,i,s){hr&&!e.options.segment?function(t,e,i,s){let o=e._path;o||(o=e._path=new Path2D,e.path(o,i,s)&&o.closePath()),sr(t,e.options),t.stroke(o)}(t,e,i,s):function(t,e,i,s){const{segments:o,options:n}=e,r=lr(e);for(const a of o)sr(t,n,a.style),t.beginPath(),r(t,e,a,{start:i,end:i+s-1})&&t.closePath(),t.stroke()}(t,e,i,s)}class dr extends hn{constructor(t){super(),this.animated=!0,this.options=void 0,this._chart=void 0,this._loop=void 0,this._fullLoop=void 0,this._path=void 0,this._points=void 0,this._segments=void 0,this._decimated=!1,this._pointsUpdated=!1,this._datasetIndex=void 0,t&&Object.assign(this,t)}updateControlPoints(t,e){const i=this.options;if((i.tension||"monotone"===i.cubicInterpolationMode)&&!i.stepped&&!this._pointsUpdated){const s=i.spanGaps?this._loop:this._fullLoop;us(this._points,i,t,s,e),this._pointsUpdated=!0}}set points(t){this._points=t,delete this._segments,delete this._path,this._pointsUpdated=!1}get points(){return this._points}get segments(){return this._segments||(this._segments=function(t,e){const i=t.points,s=t.options.spanGaps,o=i.length;if(!o)return[];const n=!!t._loop,{start:r,end:a}=function(t,e,i,s){let o=0,n=e-1;if(i&&!s)for(;o<e&&!t[o].skip;)o++;for(;o<e&&t[o].skip;)o++;for(o%=e,i&&(n+=o);n>o&&t[n%e].skip;)n--;return n%=e,{start:o,end:n}}(i,o,n,s);return $s(t,!0===s?[{start:r,end:a,loop:n}]:function(t,e,i,s){const o=t.length,n=[];let r,a=e,l=t[e];for(r=e+1;r<=i;++r){const i=t[r%o];i.skip||i.stop?l.skip||(s=!1,n.push({start:e%o,end:(r-1)%o,loop:s}),e=a=i.stop?r:null):(a=r,l.skip&&(e=r)),l=i}return null!==a&&n.push({start:e%o,end:a%o,loop:s}),n}(i,r,a<r?a+o:a,!!t._fullLoop&&0===r&&a===o-1),i,e)}(this,this.options.segment))}first(){const t=this.segments,e=this.points;return t.length&&e[t[0].start]}last(){const t=this.segments,e=this.points,i=t.length;return i&&e[t[i-1].end]}interpolate(t,e){const i=this.options,s=t[e],o=this.points,n=Ls(this,{property:e,start:s,end:s});if(!n.length)return;const r=[],a=function(t){return t.stepped?Cs:t.tension||"monotone"===t.cubicInterpolationMode?As:Ss}(i);let l,h;for(l=0,h=n.length;l<h;++l){const{start:h,end:c}=n[l],d=o[h],u=o[c];if(d===u){r.push(d);continue}const p=a(d,u,Math.abs((s-d[e])/(u[e]-d[e])),i.stepped);p[e]=t[e],r.push(p)}return 1===r.length?r[0]:r}pathSegment(t,e,i){return lr(this)(t,this,e,i)}path(t,e,i){const s=this.segments,o=lr(this);let n=this._loop;e=e||0,i=i||this.points.length-e;for(const r of s)n&=o(t,this,r,{start:e,end:e+i-1});return!!n}draw(t,e,i,s){const o=this.options||{};(this.points||[]).length&&o.borderWidth&&(t.save(),cr(t,this,i,s),t.restore()),this.animated&&(this._pointsUpdated=!1,this._path=void 0)}}function ur(t,e,i,s){const o=t.options,{[i]:n}=t.getProps([i],s);return Math.abs(e-n)<o.radius+o.hitRadius}s(dr,"id","line"),s(dr,"defaults",{borderCapStyle:"butt",borderDash:[],borderDashOffset:0,borderJoinStyle:"miter",borderWidth:3,capBezierPoints:!0,cubicInterpolationMode:"default",fill:!1,spanGaps:!1,stepped:!1,tension:0}),s(dr,"defaultRoutes",{backgroundColor:"backgroundColor",borderColor:"borderColor"}),s(dr,"descriptors",{_scriptable:!0,_indexable:t=>"borderDash"!==t&&"fill"!==t});class pr extends hn{constructor(t){super(),s(this,"parsed"),s(this,"skip"),s(this,"stop"),this.options=void 0,this.parsed=void 0,this.skip=void 0,this.stop=void 0,t&&Object.assign(this,t)}inRange(t,e,i){const s=this.options,{x:o,y:n}=this.getProps(["x","y"],i);return Math.pow(t-o,2)+Math.pow(e-n,2)<Math.pow(s.hitRadius+s.radius,2)}inXRange(t,e){return ur(this,t,"x",e)}inYRange(t,e){return ur(this,t,"y",e)}getCenterPoint(t){const{x:e,y:i}=this.getProps(["x","y"],t);return{x:e,y:i}}size(t){let e=(t=t||this.options||{}).radius||0;e=Math.max(e,e&&t.hoverRadius||0);return 2*(e+(e&&t.borderWidth||0))}draw(t,e){const i=this.options;this.skip||i.radius<.1||!Ci(this,e,this.size(i)/2)||(t.strokeStyle=i.borderColor,t.lineWidth=i.borderWidth,t.fillStyle=i.backgroundColor,ki(t,i,this.x,this.y))}getRange(){const t=this.options||{};return t.radius+t.hitRadius}}function gr(t,e){const{x:i,y:s,base:o,width:n,height:r}=t.getProps(["x","y","base","width","height"],e);let a,l,h,c,d;return t.horizontal?(d=r/2,a=Math.min(i,o),l=Math.max(i,o),h=s-d,c=s+d):(d=n/2,a=i-d,l=i+d,h=Math.min(s,o),c=Math.max(s,o)),{left:a,top:h,right:l,bottom:c}}function fr(t,e,i,s){return t?0:Be(e,i,s)}function mr(t){const e=gr(t),i=e.right-e.left,s=e.bottom-e.top,o=function(t,e,i){const s=t.options.borderWidth,o=t.borderSkipped,n=Vi(s);return{t:fr(o.top,n.top,0,i),r:fr(o.right,n.right,0,e),b:fr(o.bottom,n.bottom,0,i),l:fr(o.left,n.left,0,e)}}(t,i/2,s/2),n=function(t,e,i){const{enableBorderRadius:s}=t.getProps(["enableBorderRadius"]),o=t.options.borderRadius,n=Bi(o),r=Math.min(e,i),a=t.borderSkipped,l=s||Qt(o);return{topLeft:fr(!l||a.top||a.left,n.topLeft,0,r),topRight:fr(!l||a.top||a.right,n.topRight,0,r),bottomLeft:fr(!l||a.bottom||a.left,n.bottomLeft,0,r),bottomRight:fr(!l||a.bottom||a.right,n.bottomRight,0,r)}}(t,i/2,s/2);return{outer:{x:e.left,y:e.top,w:i,h:s,radius:n},inner:{x:e.left+o.l,y:e.top+o.t,w:i-o.l-o.r,h:s-o.t-o.b,radius:{topLeft:Math.max(0,n.topLeft-Math.max(o.t,o.l)),topRight:Math.max(0,n.topRight-Math.max(o.t,o.r)),bottomLeft:Math.max(0,n.bottomLeft-Math.max(o.b,o.l)),bottomRight:Math.max(0,n.bottomRight-Math.max(o.b,o.r))}}}}function br(t,e,i,s){const o=null===e,n=null===i,r=t&&!(o&&n)&&gr(t,s);return r&&(o||Ne(e,r.left,r.right))&&(n||Ne(i,r.top,r.bottom))}function xr(t,e){t.rect(e.x,e.y,e.w,e.h)}function _r(t,e,i={}){const s=t.x!==i.x?-e:0,o=t.y!==i.y?-e:0,n=(t.x+t.w!==i.x+i.w?e:0)-s,r=(t.y+t.h!==i.y+i.h?e:0)-o;return{x:t.x+s,y:t.y+o,w:t.w+n,h:t.h+r,radius:t.radius}}s(pr,"id","point"),s(pr,"defaults",{borderWidth:1,hitRadius:1,hoverBorderWidth:1,hoverRadius:4,pointStyle:"circle",radius:3,rotation:0}),s(pr,"defaultRoutes",{backgroundColor:"backgroundColor",borderColor:"borderColor"});class yr extends hn{constructor(t){super(),this.options=void 0,this.horizontal=void 0,this.base=void 0,this.width=void 0,this.height=void 0,this.inflateAmount=void 0,t&&Object.assign(this,t)}draw(t){const{inflateAmount:e,options:{borderColor:i,backgroundColor:s}}=this,{inner:o,outer:n}=mr(this),r=(a=n.radius).topLeft||a.topRight||a.bottomLeft||a.bottomRight?Li:xr;var a;t.save(),n.w===o.w&&n.h===o.h||(t.beginPath(),r(t,_r(n,e,o)),t.clip(),r(t,_r(o,-e,n)),t.fillStyle=i,t.fill("evenodd")),t.beginPath(),r(t,_r(o,e)),t.fillStyle=s,t.fill(),t.restore()}inRange(t,e,i){return br(this,t,e,i)}inXRange(t,e){return br(this,t,null,e)}inYRange(t,e){return br(this,null,t,e)}getCenterPoint(t){const{x:e,y:i,base:s,horizontal:o}=this.getProps(["x","y","base","horizontal"],t);return{x:o?(e+s)/2:e,y:o?i:(i+s)/2}}getRange(t){return"x"===t?this.width/2:this.height/2}}s(yr,"id","bar"),s(yr,"defaults",{borderSkipped:"start",borderWidth:0,borderRadius:0,inflateAmount:"auto",pointStyle:void 0}),s(yr,"defaultRoutes",{backgroundColor:"backgroundColor",borderColor:"borderColor"});var vr=Object.freeze({__proto__:null,ArcElement:ir,BarElement:yr,LineElement:dr,PointElement:pr});const wr=["rgb(54, 162, 235)","rgb(255, 99, 132)","rgb(255, 159, 64)","rgb(255, 205, 86)","rgb(75, 192, 192)","rgb(153, 102, 255)","rgb(201, 203, 207)"],Mr=wr.map(t=>t.replace("rgb(","rgba(").replace(")",", 0.5)"));function kr(t){return wr[t%wr.length]}function Sr(t){return Mr[t%Mr.length]}function Cr(t){let e=0;return(i,s)=>{const o=t.getDatasetMeta(s).controller;o instanceof fo?e=function(t,e){return t.backgroundColor=t.data.map(()=>kr(e++)),e}(i,e):o instanceof bo?e=function(t,e){return t.backgroundColor=t.data.map(()=>Sr(e++)),e}(i,e):o&&(e=function(t,e){return t.borderColor=kr(e),t.backgroundColor=Sr(e),++e}(i,e))}}function Ar(t){let e;for(e in t)if(t[e].borderColor||t[e].backgroundColor)return!0;return!1}var Pr={id:"colors",defaults:{enabled:!0,forceOverride:!1},beforeLayout(t,e,i){if(!i.enabled)return;const{data:{datasets:s},options:o}=t.config,{elements:n}=o,r=Ar(s)||(a=o)&&(a.borderColor||a.backgroundColor)||n&&Ar(n)||"rgba(0,0,0,0.1)"!==_i.borderColor||"rgba(0,0,0,0.1)"!==_i.backgroundColor;var a;if(!i.forceOverride&&r)return;const l=Cr(t);s.forEach(l)}};function Dr(t){if(t._decimated){const e=t._data;delete t._decimated,delete t._data,Object.defineProperty(t,"data",{configurable:!0,enumerable:!0,writable:!0,value:e})}}function Er(t){t.data.datasets.forEach(t=>{Dr(t)})}var Or={id:"decimation",defaults:{algorithm:"min-max",enabled:!1},beforeElementsUpdate:(t,e,i)=>{if(!i.enabled)return void Er(t);const s=t.width;t.data.datasets.forEach((e,o)=>{const{_data:n,indexAxis:r}=e,a=t.getDatasetMeta(o),l=n||e.data;if("y"===ji([r,t.options.indexAxis]))return;if(!a.controller.supportsDecimation)return;const h=t.scales[a.xAxisID];if("linear"!==h.type&&"time"!==h.type)return;if(t.options.parsing)return;let{start:c,count:d}=function(t,e){const i=e.length;let s,o=0;const{iScale:n}=t,{min:r,max:a,minDefined:l,maxDefined:h}=n.getUserBounds();return l&&(o=Be(je(e,n.axis,r).lo,0,i-1)),s=h?Be(je(e,n.axis,a).hi+1,o,i)-o:i-o,{start:o,count:s}}(a,l);if(d<=(i.threshold||4*s))return void Dr(e);let u;switch(Jt(n)&&(e._data=l,delete e.data,Object.defineProperty(e,"data",{configurable:!0,enumerable:!0,get:function(){return this._decimated},set:function(t){this._data=t}})),i.algorithm){case"lttb":u=function(t,e,i,s,o){const n=o.samples||s;if(n>=i)return t.slice(e,e+i);const r=[],a=(i-2)/(n-2);let l=0;const h=e+i-1;let c,d,u,p,g,f=e;for(r[l++]=t[f],c=0;c<n-2;c++){let s,o=0,n=0;const h=Math.floor((c+1)*a)+1+e,m=Math.min(Math.floor((c+2)*a)+1,i)+e,b=m-h;for(s=h;s<m;s++)o+=t[s].x,n+=t[s].y;o/=b,n/=b;const x=Math.floor(c*a)+1+e,_=Math.min(Math.floor((c+1)*a)+1,i)+e,{x:y,y:v}=t[f];for(u=p=-1,s=x;s<_;s++)p=.5*Math.abs((y-o)*(t[s].y-v)-(y-t[s].x)*(n-v)),p>u&&(u=p,d=t[s],g=s);r[l++]=d,f=g}return r[l++]=t[h],r}(l,c,d,s,i);break;case"min-max":u=function(t,e,i,s){let o,n,r,a,l,h,c,d,u,p,g=0,f=0;const m=[],b=e+i-1,x=t[e].x,_=t[b].x-x;for(o=e;o<e+i;++o){n=t[o],r=(n.x-x)/_*s,a=n.y;const e=0|r;if(e===l)a<u?(u=a,h=o):a>p&&(p=a,c=o),g=(f*g+n.x)/++f;else{const i=o-1;if(!Jt(h)&&!Jt(c)){const e=Math.min(h,c),s=Math.max(h,c);e!==d&&e!==i&&m.push({...t[e],x:g}),s!==d&&s!==i&&m.push({...t[s],x:g})}o>0&&i!==d&&m.push(t[i]),m.push(n),l=e,f=0,u=p=a,h=c=d=o}}return m}(l,c,d,s);break;default:throw new Error(`Unsupported decimation algorithm '${i.algorithm}'`)}e._decimated=u})},destroy(t){Er(t)}};function Tr(t,e,i,s){if(s)return;let o=e[t],n=i[t];return"angle"===t&&(o=He(o),n=He(n)),{property:t,start:o,end:n}}function Rr(t,e,i){for(;e>t;e--){const t=i[e];if(!isNaN(t.x)&&!isNaN(t.y))break}return e}function Lr(t,e,i,s){return t&&e?s(t[i],e[i]):t?t[i]:e?e[i]:0}function $r(t,e){let i=[],s=!1;return Zt(t)?(s=!0,i=t):i=function(t,e){const{x:i=null,y:s=null}=t||{},o=e.points,n=[];return e.segments.forEach(({start:t,end:e})=>{e=Rr(t,e,o);const r=o[t],a=o[e];null!==s?(n.push({x:r.x,y:s}),n.push({x:a.x,y:s})):null!==i&&(n.push({x:i,y:r.y}),n.push({x:i,y:a.y}))}),n}(t,e),i.length?new dr({points:i,options:{tension:0},_loop:s,_fullLoop:s}):null}function Ir(t){return t&&!1!==t.fill}function zr(t,e,i){let s=t[e].fill;const o=[e];let n;if(!i)return s;for(;!1!==s&&-1===o.indexOf(s);){if(!te(s))return s;if(n=t[s],!n)return!1;if(n.visible)return s;o.push(s),s=n.fill}return!1}function Fr(t,e,i){const s=function(t){const e=t.options,i=e.fill;let s=ie(i&&i.target,i);void 0===s&&(s=!!e.backgroundColor);if(!1===s||null===s)return!1;if(!0===s)return"origin";return s}(t);if(Qt(s))return!isNaN(s.value)&&s;let o=parseFloat(s);return te(o)&&Math.floor(o)===o?function(t,e,i,s){"-"!==t&&"+"!==t||(i=e+i);if(i===e||i<0||i>=s)return!1;return i}(s[0],e,o,i):["origin","start","end","stack","shape"].indexOf(s)>=0&&s}function Hr(t,e,i){const s=[];for(let o=0;o<i.length;o++){const n=i[o],{first:r,last:a,point:l}=Vr(n,e,"x");if(!(!l||r&&a))if(r)s.unshift(l);else if(t.push(l),!a)break}t.push(...s)}function Vr(t,e,i){const s=t.interpolate(e,i);if(!s)return{};const o=s[i],n=t.segments,r=t.points;let a=!1,l=!1;for(let h=0;h<n.length;h++){const t=n[h],e=r[t.start][i],s=r[t.end][i];if(Ne(o,e,s)){a=o===e,l=o===s;break}}return{first:a,last:l,point:s}}class Br{constructor(t){this.x=t.x,this.y=t.y,this.radius=t.radius}pathSegment(t,e,i){const{x:s,y:o,radius:n}=this;return e=e||{start:0,end:ye},t.arc(s,o,n,e.end,e.start,!0),!i.bounds}interpolate(t){const{x:e,y:i,radius:s}=this,o=t.angle;return{x:e+Math.cos(o)*s,y:i+Math.sin(o)*s,angle:o}}}function Nr(t){const{chart:e,fill:i,line:s}=t;if(te(i))return function(t,e){const i=t.getDatasetMeta(e),s=i&&t.isDatasetVisible(e);return s?i.dataset:null}(e,i);if("stack"===i)return function(t){const{scale:e,index:i,line:s}=t,o=[],n=s.segments,r=s.points,a=function(t,e){const i=[],s=t.getMatchingVisibleMetas("line");for(let o=0;o<s.length;o++){const t=s[o];if(t.index===e)break;t.hidden||i.unshift(t.dataset)}return i}(e,i);a.push($r({x:null,y:e.bottom},s));for(let l=0;l<n.length;l++){const t=n[l];for(let e=t.start;e<=t.end;e++)Hr(o,r[e],a)}return new dr({points:o,options:{}})}(t);if("shape"===i)return!0;const o=function(t){const e=t.scale||{};if(e.getPointPositionForValue)return function(t){const{scale:e,fill:i}=t,s=e.options,o=e.getLabels().length,n=s.reverse?e.max:e.min,r=function(t,e,i){let s;return s="start"===t?i:"end"===t?e.options.reverse?e.min:e.max:Qt(t)?t.value:e.getBaseValue(),s}(i,e,n),a=[];if(s.grid.circular){const t=e.getPointPositionForValue(0,n);return new Br({x:t.x,y:t.y,radius:e.getDistanceFromCenterForValue(r)})}for(let l=0;l<o;++l)a.push(e.getPointPositionForValue(l,r));return a}(t);return function(t){const{scale:e={},fill:i}=t,s=function(t,e){let i=null;return"start"===t?i=e.bottom:"end"===t?i=e.top:Qt(t)?i=e.getPixelForValue(t.value):e.getBasePixel&&(i=e.getBasePixel()),i}(i,e);if(te(s)){const t=e.isHorizontal();return{x:t?s:null,y:t?null:s}}return null}(t)}(t);return o instanceof Br?o:$r(o,s)}function Wr(t,e,i){const s=Nr(e),{chart:o,index:n,line:r,scale:a,axis:l}=e,h=r.options,c=h.fill,d=h.backgroundColor,{above:u=d,below:p=d}=c||{},g=o.getDatasetMeta(n),f=Hs(o,g);s&&r.points.length&&(Ai(t,i),function(t,e){const{line:i,target:s,above:o,below:n,area:r,scale:a,clip:l}=e,h=i._loop?"angle":e.axis;t.save();let c=n;n!==o&&("x"===h?(jr(t,s,r.top),Yr(t,{line:i,target:s,color:o,scale:a,property:h,clip:l}),t.restore(),t.save(),jr(t,s,r.bottom)):"y"===h&&(Ur(t,s,r.left),Yr(t,{line:i,target:s,color:n,scale:a,property:h,clip:l}),t.restore(),t.save(),Ur(t,s,r.right),c=o));Yr(t,{line:i,target:s,color:c,scale:a,property:h,clip:l}),t.restore()}(t,{line:r,target:s,above:u,below:p,area:i,scale:a,axis:l,clip:f}),Pi(t))}function jr(t,e,i){const{segments:s,points:o}=e;let n=!0,r=!1;t.beginPath();for(const a of s){const{start:s,end:l}=a,h=o[s],c=o[Rr(s,l,o)];n?(t.moveTo(h.x,h.y),n=!1):(t.lineTo(h.x,i),t.lineTo(h.x,h.y)),r=!!e.pathSegment(t,a,{move:r}),r?t.closePath():t.lineTo(c.x,i)}t.lineTo(e.first().x,i),t.closePath(),t.clip()}function Ur(t,e,i){const{segments:s,points:o}=e;let n=!0,r=!1;t.beginPath();for(const a of s){const{start:s,end:l}=a,h=o[s],c=o[Rr(s,l,o)];n?(t.moveTo(h.x,h.y),n=!1):(t.lineTo(i,h.y),t.lineTo(h.x,h.y)),r=!!e.pathSegment(t,a,{move:r}),r?t.closePath():t.lineTo(i,c.y)}t.lineTo(i,e.first().y),t.closePath(),t.clip()}function Yr(t,e){const{line:i,target:s,property:o,color:n,scale:r,clip:a}=e,l=function(t,e,i){const s=t.segments,o=t.points,n=e.points,r=[];for(const a of s){let{start:t,end:s}=a;s=Rr(t,s,o);const l=Tr(i,o[t],o[s],a.loop);if(!e.segments){r.push({source:a,target:l,start:o[t],end:o[s]});continue}const h=Ls(e,l);for(const e of h){const t=Tr(i,n[e.start],n[e.end],e.loop),s=Rs(a,o,t);for(const o of s)r.push({source:o,target:e,start:{[i]:Lr(l,t,"start",Math.max)},end:{[i]:Lr(l,t,"end",Math.min)}})}}return r}(i,s,o);for(const{source:h,target:c,start:d,end:u}of l){const{style:{backgroundColor:e=n}={}}=h,l=!0!==s;t.save(),t.fillStyle=e,Xr(t,r,a,l&&Tr(o,d,u)),t.beginPath();const p=!!i.pathSegment(t,h);let g;if(l){p?t.closePath():qr(t,s,u,o);const e=!!s.pathSegment(t,c,{move:p,reverse:!0});g=p&&e,g||qr(t,s,d,o)}t.closePath(),t.fill(g?"evenodd":"nonzero"),t.restore()}}function Xr(t,e,i,s){const o=e.chart.chartArea,{property:n,start:r,end:a}=s||{};if("x"===n||"y"===n){let e,s,l,h;"x"===n?(e=r,s=o.top,l=a,h=o.bottom):(e=o.left,s=r,l=o.right,h=a),t.beginPath(),i&&(e=Math.max(e,i.left),l=Math.min(l,i.right),s=Math.max(s,i.top),h=Math.min(h,i.bottom)),t.rect(e,s,l-e,h-s),t.clip()}}function qr(t,e,i,s){const o=e.interpolate(i,s);o&&t.lineTo(o.x,o.y)}var Gr={id:"filler",afterDatasetsUpdate(t,e,i){const s=(t.data.datasets||[]).length,o=[];let n,r,a,l;for(r=0;r<s;++r)n=t.getDatasetMeta(r),a=n.dataset,l=null,a&&a.options&&a instanceof dr&&(l={visible:t.isDatasetVisible(r),index:r,fill:Fr(a,r,s),chart:t,axis:n.controller.options.indexAxis,scale:n.vScale,line:a}),n.$filler=l,o.push(l);for(r=0;r<s;++r)l=o[r],l&&!1!==l.fill&&(l.fill=zr(o,r,i.propagate))},beforeDraw(t,e,i){const s="beforeDraw"===i.drawTime,o=t.getSortedVisibleDatasetMetas(),n=t.chartArea;for(let r=o.length-1;r>=0;--r){const e=o[r].$filler;e&&(e.line.updateControlPoints(n,e.axis),s&&e.fill&&Wr(t.ctx,e,n))}},beforeDatasetsDraw(t,e,i){if("beforeDatasetsDraw"!==i.drawTime)return;const s=t.getSortedVisibleDatasetMetas();for(let o=s.length-1;o>=0;--o){const e=s[o].$filler;Ir(e)&&Wr(t.ctx,e,t.chartArea)}},beforeDatasetDraw(t,e,i){const s=e.meta.$filler;Ir(s)&&"beforeDatasetDraw"===i.drawTime&&Wr(t.ctx,s,t.chartArea)},defaults:{propagate:!0,drawTime:"beforeDatasetDraw"}};const Kr=(t,e)=>{let{boxHeight:i=e,boxWidth:s=e}=t;return t.usePointStyle&&(i=Math.min(i,e),s=t.pointStyleWidth||Math.min(s,e)),{boxWidth:s,boxHeight:i,itemHeight:Math.max(e,i)}};class Jr extends hn{constructor(t){super(),this._added=!1,this.legendHitBoxes=[],this._hoveredItem=null,this.doughnutMode=!1,this.chart=t.chart,this.options=t.options,this.ctx=t.ctx,this.legendItems=void 0,this.columnSizes=void 0,this.lineWidths=void 0,this.maxHeight=void 0,this.maxWidth=void 0,this.top=void 0,this.bottom=void 0,this.left=void 0,this.right=void 0,this.height=void 0,this.width=void 0,this._margins=void 0,this.position=void 0,this.weight=void 0,this.fullSize=void 0}update(t,e,i){this.maxWidth=t,this.maxHeight=e,this._margins=i,this.setDimensions(),this.buildLabels(),this.fit()}setDimensions(){this.isHorizontal()?(this.width=this.maxWidth,this.left=this._margins.left,this.right=this.width):(this.height=this.maxHeight,this.top=this._margins.top,this.bottom=this.height)}buildLabels(){const t=this.options.labels||{};let e=oe(t.generateLabels,[this.chart],this)||[];t.filter&&(e=e.filter(e=>t.filter(e,this.chart.data))),t.sort&&(e=e.sort((e,i)=>t.sort(e,i,this.chart.data))),this.options.reverse&&e.reverse(),this.legendItems=e}fit(){const{options:t,ctx:e}=this;if(!t.display)return void(this.width=this.height=0);const i=t.labels,s=Wi(i.font),o=s.size,n=this._computeTitleHeight(),{boxWidth:r,itemHeight:a}=Kr(i,o);let l,h;e.font=s.string,this.isHorizontal()?(l=this.maxWidth,h=this._fitRows(n,o,r,a)+10):(h=this.maxHeight,l=this._fitCols(n,s,r,a)+10),this.width=Math.min(l,t.maxWidth||this.maxWidth),this.height=Math.min(h,t.maxHeight||this.maxHeight)}_fitRows(t,e,i,s){const{ctx:o,maxWidth:n,options:{labels:{padding:r}}}=this,a=this.legendHitBoxes=[],l=this.lineWidths=[0],h=s+r;let c=t;o.textAlign="left",o.textBaseline="middle";let d=-1,u=-h;return this.legendItems.forEach((t,p)=>{const g=i+e/2+o.measureText(t.text).width;(0===p||l[l.length-1]+g+2*r>n)&&(c+=h,l[l.length-(p>0?0:1)]=0,u+=h,d++),a[p]={left:0,top:u,row:d,width:g,height:s},l[l.length-1]+=g+r}),c}_fitCols(t,e,i,s){const{ctx:o,maxHeight:n,options:{labels:{padding:r}}}=this,a=this.legendHitBoxes=[],l=this.columnSizes=[],h=n-t;let c=r,d=0,u=0,p=0,g=0;return this.legendItems.forEach((t,n)=>{const{itemWidth:f,itemHeight:m}=function(t,e,i,s,o){const n=function(t,e,i,s){let o=t.text;o&&"string"!=typeof o&&(o=o.reduce((t,e)=>t.length>e.length?t:e));return e+i.size/2+s.measureText(o).width}(s,t,e,i),r=function(t,e,i){let s=t;"string"!=typeof e.text&&(s=Zr(e,i));return s}(o,s,e.lineHeight);return{itemWidth:n,itemHeight:r}}(i,e,o,t,s);n>0&&u+m+2*r>h&&(c+=d+r,l.push({width:d,height:u}),p+=d+r,g++,d=u=0),a[n]={left:p,top:u,col:g,width:f,height:m},d=Math.max(d,f),u+=m+r}),c+=d,l.push({width:d,height:u}),c}adjustHitBoxes(){if(!this.options.display)return;const t=this._computeTitleHeight(),{legendHitBoxes:e,options:{align:i,labels:{padding:s},rtl:o}}=this,n=Ps(o,this.left,this.width);if(this.isHorizontal()){let o=0,r=Ze(i,this.left+s,this.right-this.lineWidths[o]);for(const a of e)o!==a.row&&(o=a.row,r=Ze(i,this.left+s,this.right-this.lineWidths[o])),a.top+=this.top+t+s,a.left=n.leftForLtr(n.x(r),a.width),r+=a.width+s}else{let o=0,r=Ze(i,this.top+t+s,this.bottom-this.columnSizes[o].height);for(const a of e)a.col!==o&&(o=a.col,r=Ze(i,this.top+t+s,this.bottom-this.columnSizes[o].height)),a.top=r,a.left+=this.left+s,a.left=n.leftForLtr(n.x(a.left),a.width),r+=a.height+s}}isHorizontal(){return"top"===this.options.position||"bottom"===this.options.position}draw(){if(this.options.display){const t=this.ctx;Ai(t,this),this._draw(),Pi(t)}}_draw(){const{options:t,columnSizes:e,lineWidths:i,ctx:s}=this,{align:o,labels:n}=t,r=_i.color,a=Ps(t.rtl,this.left,this.width),l=Wi(n.font),{padding:h}=n,c=l.size,d=c/2;let u;this.drawTitle(),s.textAlign=a.textAlign("left"),s.textBaseline="middle",s.lineWidth=.5,s.font=l.string;const{boxWidth:p,boxHeight:g,itemHeight:f}=Kr(n,c),m=this.isHorizontal(),b=this._computeTitleHeight();u=m?{x:Ze(o,this.left+h,this.right-i[0]),y:this.top+h+b,line:0}:{x:this.left+h,y:Ze(o,this.top+b+h,this.bottom-e[0].height),line:0},Ds(this.ctx,t.textDirection);const x=f+h;this.legendItems.forEach((_,y)=>{s.strokeStyle=_.fontColor,s.fillStyle=_.fontColor;const v=s.measureText(_.text).width,w=a.textAlign(_.textAlign||(_.textAlign=n.textAlign)),M=p+d+v;let k=u.x,S=u.y;a.setWidth(this.width),m?y>0&&k+M+h>this.right&&(S=u.y+=x,u.line++,k=u.x=Ze(o,this.left+h,this.right-i[u.line])):y>0&&S+x>this.bottom&&(k=u.x=k+e[u.line].width+h,u.line++,S=u.y=Ze(o,this.top+b+h,this.bottom-e[u.line].height));if(function(t,e,i){if(isNaN(p)||p<=0||isNaN(g)||g<0)return;s.save();const o=ie(i.lineWidth,1);if(s.fillStyle=ie(i.fillStyle,r),s.lineCap=ie(i.lineCap,"butt"),s.lineDashOffset=ie(i.lineDashOffset,0),s.lineJoin=ie(i.lineJoin,"miter"),s.lineWidth=o,s.strokeStyle=ie(i.strokeStyle,r),s.setLineDash(ie(i.lineDash,[])),n.usePointStyle){const r={radius:g*Math.SQRT2/2,pointStyle:i.pointStyle,rotation:i.rotation,borderWidth:o},l=a.xPlus(t,p/2);Si(s,r,l,e+d,n.pointStyleWidth&&p)}else{const n=e+Math.max((c-g)/2,0),r=a.leftForLtr(t,p),l=Bi(i.borderRadius);s.beginPath(),Object.values(l).some(t=>0!==t)?Li(s,{x:r,y:n,w:p,h:g,radius:l}):s.rect(r,n,p,g),s.fill(),0!==o&&s.stroke()}s.restore()}(a.x(k),S,_),k=((t,e,i,s)=>t===(s?"left":"right")?i:"center"===t?(e+i)/2:e)(w,k+p+d,m?k+M:this.right,t.rtl),function(t,e,i){Ri(s,i.text,t,e+f/2,l,{strikethrough:i.hidden,textAlign:a.textAlign(i.textAlign)})}(a.x(k),S,_),m)u.x+=M+h;else if("string"!=typeof _.text){const t=l.lineHeight;u.y+=Zr(_,t)+h}else u.y+=x}),Es(this.ctx,t.textDirection)}drawTitle(){const t=this.options,e=t.title,i=Wi(e.font),s=Ni(e.padding);if(!e.display)return;const o=Ps(t.rtl,this.left,this.width),n=this.ctx,r=e.position,a=i.size/2,l=s.top+a;let h,c=this.left,d=this.width;if(this.isHorizontal())d=Math.max(...this.lineWidths),h=this.top+l,c=Ze(t.align,c,this.right-d);else{const e=this.columnSizes.reduce((t,e)=>Math.max(t,e.height),0);h=l+Ze(t.align,this.top,this.bottom-e-t.labels.padding-this._computeTitleHeight())}const u=Ze(r,c,c+d);n.textAlign=o.textAlign(Je(r)),n.textBaseline="middle",n.strokeStyle=e.color,n.fillStyle=e.color,n.font=i.string,Ri(n,e.text,u,h,i)}_computeTitleHeight(){const t=this.options.title,e=Wi(t.font),i=Ni(t.padding);return t.display?e.lineHeight+i.height:0}_getLegendItemAt(t,e){let i,s,o;if(Ne(t,this.left,this.right)&&Ne(e,this.top,this.bottom))for(o=this.legendHitBoxes,i=0;i<o.length;++i)if(s=o[i],Ne(t,s.left,s.left+s.width)&&Ne(e,s.top,s.top+s.height))return this.legendItems[i];return null}handleEvent(t){const e=this.options;if(!function(t,e){if(("mousemove"===t||"mouseout"===t)&&(e.onHover||e.onLeave))return!0;if(e.onClick&&("click"===t||"mouseup"===t))return!0;return!1}(t.type,e))return;const i=this._getLegendItemAt(t.x,t.y);if("mousemove"===t.type||"mouseout"===t.type){const n=this._hoveredItem,r=(o=i,null!==(s=n)&&null!==o&&s.datasetIndex===o.datasetIndex&&s.index===o.index);n&&!r&&oe(e.onLeave,[t,n,this],this),this._hoveredItem=i,i&&!r&&oe(e.onHover,[t,i,this],this)}else i&&oe(e.onClick,[t,i,this],this);var s,o}}function Zr(t,e){return e*(t.text?t.text.length:0)}var Qr={id:"legend",_element:Jr,start(t,e,i){const s=t.legend=new Jr({ctx:t.ctx,options:i,chart:t});jo.configure(t,s,i),jo.addBox(t,s)},stop(t){jo.removeBox(t,t.legend),delete t.legend},beforeUpdate(t,e,i){const s=t.legend;jo.configure(t,s,i),s.options=i},afterUpdate(t){const e=t.legend;e.buildLabels(),e.adjustHitBoxes()},afterEvent(t,e){e.replay||t.legend.handleEvent(e.event)},defaults:{display:!0,position:"top",align:"center",fullSize:!0,reverse:!1,weight:1e3,onClick(t,e,i){const s=e.datasetIndex,o=i.chart;o.isDatasetVisible(s)?(o.hide(s),e.hidden=!0):(o.show(s),e.hidden=!1)},onHover:null,onLeave:null,labels:{color:t=>t.chart.options.color,boxWidth:40,padding:10,generateLabels(t){const e=t.data.datasets,{labels:{usePointStyle:i,pointStyle:s,textAlign:o,color:n,useBorderRadius:r,borderRadius:a}}=t.legend.options;return t._getSortedDatasetMetas().map(t=>{const l=t.controller.getStyle(i?0:void 0),h=Ni(l.borderWidth);return{text:e[t.index].label,fillStyle:l.backgroundColor,fontColor:n,hidden:!t.visible,lineCap:l.borderCapStyle,lineDash:l.borderDash,lineDashOffset:l.borderDashOffset,lineJoin:l.borderJoinStyle,lineWidth:(h.width+h.height)/4,strokeStyle:l.borderColor,pointStyle:s||l.pointStyle,rotation:l.rotation,textAlign:o||l.textAlign,borderRadius:r&&(a||l.borderRadius),datasetIndex:t.index}},this)}},title:{color:t=>t.chart.options.color,display:!1,position:"center",text:""}},descriptors:{_scriptable:t=>!t.startsWith("on"),labels:{_scriptable:t=>!["generateLabels","filter","sort"].includes(t)}}};class ta extends hn{constructor(t){super(),this.chart=t.chart,this.options=t.options,this.ctx=t.ctx,this._padding=void 0,this.top=void 0,this.bottom=void 0,this.left=void 0,this.right=void 0,this.width=void 0,this.height=void 0,this.position=void 0,this.weight=void 0,this.fullSize=void 0}update(t,e){const i=this.options;if(this.left=0,this.top=0,!i.display)return void(this.width=this.height=this.right=this.bottom=0);this.width=this.right=t,this.height=this.bottom=e;const s=Zt(i.text)?i.text.length:1;this._padding=Ni(i.padding);const o=s*Wi(i.font).lineHeight+this._padding.height;this.isHorizontal()?this.height=o:this.width=o}isHorizontal(){const t=this.options.position;return"top"===t||"bottom"===t}_drawArgs(t){const{top:e,left:i,bottom:s,right:o,options:n}=this,r=n.align;let a,l,h,c=0;return this.isHorizontal()?(l=Ze(r,i,o),h=e+t,a=o-i):("left"===n.position?(l=i+t,h=Ze(r,s,e),c=-.5*_e):(l=o-t,h=Ze(r,e,s),c=.5*_e),a=s-e),{titleX:l,titleY:h,maxWidth:a,rotation:c}}draw(){const t=this.ctx,e=this.options;if(!e.display)return;const i=Wi(e.font),s=i.lineHeight/2+this._padding.top,{titleX:o,titleY:n,maxWidth:r,rotation:a}=this._drawArgs(s);Ri(t,e.text,0,0,i,{color:e.color,maxWidth:r,rotation:a,textAlign:Je(e.align),textBaseline:"middle",translation:[o,n]})}}var ea={id:"title",_element:ta,start(t,e,i){!function(t,e){const i=new ta({ctx:t.ctx,options:e,chart:t});jo.configure(t,i,e),jo.addBox(t,i),t.titleBlock=i}(t,i)},stop(t){const e=t.titleBlock;jo.removeBox(t,e),delete t.titleBlock},beforeUpdate(t,e,i){const s=t.titleBlock;jo.configure(t,s,i),s.options=i},defaults:{align:"center",display:!1,font:{weight:"bold"},fullSize:!0,padding:10,position:"top",text:"",weight:2e3},defaultRoutes:{color:"color"},descriptors:{_scriptable:!0,_indexable:!1}};const ia=new WeakMap;var sa={id:"subtitle",start(t,e,i){const s=new ta({ctx:t.ctx,options:i,chart:t});jo.configure(t,s,i),jo.addBox(t,s),ia.set(t,s)},stop(t){jo.removeBox(t,ia.get(t)),ia.delete(t)},beforeUpdate(t,e,i){const s=ia.get(t);jo.configure(t,s,i),s.options=i},defaults:{align:"center",display:!1,font:{weight:"normal"},fullSize:!0,padding:0,position:"top",text:"",weight:1500},defaultRoutes:{color:"color"},descriptors:{_scriptable:!0,_indexable:!1}};const oa={average(t){if(!t.length)return!1;let e,i,s=new Set,o=0,n=0;for(e=0,i=t.length;e<i;++e){const i=t[e].element;if(i&&i.hasValue()){const t=i.tooltipPosition();s.add(t.x),o+=t.y,++n}}if(0===n||0===s.size)return!1;return{x:[...s].reduce((t,e)=>t+e)/s.size,y:o/n}},nearest(t,e){if(!t.length)return!1;let i,s,o,n=e.x,r=e.y,a=Number.POSITIVE_INFINITY;for(i=0,s=t.length;i<s;++i){const s=t[i].element;if(s&&s.hasValue()){const t=ze(e,s.getCenterPoint());t<a&&(a=t,o=s)}}if(o){const t=o.tooltipPosition();n=t.x,r=t.y}return{x:n,y:r}}};function na(t,e){return e&&(Zt(e)?Array.prototype.push.apply(t,e):t.push(e)),t}function ra(t){return("string"==typeof t||t instanceof String)&&t.indexOf("\n")>-1?t.split("\n"):t}function aa(t,e){const{element:i,datasetIndex:s,index:o}=e,n=t.getDatasetMeta(s).controller,{label:r,value:a}=n.getLabelAndValue(o);return{chart:t,label:r,parsed:n.getParsed(o),raw:t.data.datasets[s].data[o],formattedValue:a,dataset:n.getDataset(),dataIndex:o,datasetIndex:s,element:i}}function la(t,e){const i=t.chart.ctx,{body:s,footer:o,title:n}=t,{boxWidth:r,boxHeight:a}=e,l=Wi(e.bodyFont),h=Wi(e.titleFont),c=Wi(e.footerFont),d=n.length,u=o.length,p=s.length,g=Ni(e.padding);let f=g.height,m=0,b=s.reduce((t,e)=>t+e.before.length+e.lines.length+e.after.length,0);if(b+=t.beforeBody.length+t.afterBody.length,d&&(f+=d*h.lineHeight+(d-1)*e.titleSpacing+e.titleMarginBottom),b){f+=p*(e.displayColors?Math.max(a,l.lineHeight):l.lineHeight)+(b-p)*l.lineHeight+(b-1)*e.bodySpacing}u&&(f+=e.footerMarginTop+u*c.lineHeight+(u-1)*e.footerSpacing);let x=0;const _=function(t){m=Math.max(m,i.measureText(t).width+x)};return i.save(),i.font=h.string,ne(t.title,_),i.font=l.string,ne(t.beforeBody.concat(t.afterBody),_),x=e.displayColors?r+2+e.boxPadding:0,ne(s,t=>{ne(t.before,_),ne(t.lines,_),ne(t.after,_)}),x=0,i.font=c.string,ne(t.footer,_),i.restore(),m+=g.width,{width:m,height:f}}function ha(t,e,i,s){const{x:o,width:n}=i,{width:r,chartArea:{left:a,right:l}}=t;let h="center";return"center"===s?h=o<=(a+l)/2?"left":"right":o<=n/2?h="left":o>=r-n/2&&(h="right"),function(t,e,i,s){const{x:o,width:n}=s,r=i.caretSize+i.caretPadding;return"left"===t&&o+n+r>e.width||"right"===t&&o-n-r<0||void 0}(h,t,e,i)&&(h="center"),h}function ca(t,e,i){const s=i.yAlign||e.yAlign||function(t,e){const{y:i,height:s}=e;return i<s/2?"top":i>t.height-s/2?"bottom":"center"}(t,i);return{xAlign:i.xAlign||e.xAlign||ha(t,e,i,s),yAlign:s}}function da(t,e,i,s){const{caretSize:o,caretPadding:n,cornerRadius:r}=t,{xAlign:a,yAlign:l}=i,h=o+n,{topLeft:c,topRight:d,bottomLeft:u,bottomRight:p}=Bi(r);let g=function(t,e){let{x:i,width:s}=t;return"right"===e?i-=s:"center"===e&&(i-=s/2),i}(e,a);const f=function(t,e,i){let{y:s,height:o}=t;return"top"===e?s+=i:s-="bottom"===e?o+i:o/2,s}(e,l,h);return"center"===l?"left"===a?g+=h:"right"===a&&(g-=h):"left"===a?g-=Math.max(c,u)+o:"right"===a&&(g+=Math.max(d,p)+o),{x:Be(g,0,s.width-e.width),y:Be(f,0,s.height-e.height)}}function ua(t,e,i){const s=Ni(i.padding);return"center"===e?t.x+t.width/2:"right"===e?t.x+t.width-s.right:t.x+s.left}function pa(t){return na([],ra(t))}function ga(t,e){const i=e&&e.dataset&&e.dataset.tooltip&&e.dataset.tooltip.callbacks;return i?t.override(i):t}const fa={beforeTitle:Gt,title(t){if(t.length>0){const e=t[0],i=e.chart.data.labels,s=i?i.length:0;if(this&&this.options&&"dataset"===this.options.mode)return e.dataset.label||"";if(e.label)return e.label;if(s>0&&e.dataIndex<s)return i[e.dataIndex]}return""},afterTitle:Gt,beforeBody:Gt,beforeLabel:Gt,label(t){if(this&&this.options&&"dataset"===this.options.mode)return t.label+": "+t.formattedValue||t.formattedValue;let e=t.dataset.label||"";e&&(e+=": ");const i=t.formattedValue;return Jt(i)||(e+=i),e},labelColor(t){const e=t.chart.getDatasetMeta(t.datasetIndex).controller.getStyle(t.dataIndex);return{borderColor:e.borderColor,backgroundColor:e.backgroundColor,borderWidth:e.borderWidth,borderDash:e.borderDash,borderDashOffset:e.borderDashOffset,borderRadius:0}},labelTextColor(){return this.options.bodyColor},labelPointStyle(t){const e=t.chart.getDatasetMeta(t.datasetIndex).controller.getStyle(t.dataIndex);return{pointStyle:e.pointStyle,rotation:e.rotation}},afterLabel:Gt,afterBody:Gt,beforeFooter:Gt,footer:Gt,afterFooter:Gt};function ma(t,e,i,s){const o=t[e].call(i,s);return void 0===o?fa[e].call(i,s):o}class ba extends hn{constructor(t){super(),this.opacity=0,this._active=[],this._eventPosition=void 0,this._size=void 0,this._cachedAnimations=void 0,this._tooltipItems=[],this.$animations=void 0,this.$context=void 0,this.chart=t.chart,this.options=t.options,this.dataPoints=void 0,this.title=void 0,this.beforeBody=void 0,this.body=void 0,this.afterBody=void 0,this.footer=void 0,this.xAlign=void 0,this.yAlign=void 0,this.x=void 0,this.y=void 0,this.height=void 0,this.width=void 0,this.caretX=void 0,this.caretY=void 0,this.labelColors=void 0,this.labelPointStyles=void 0,this.labelTextColors=void 0}initialize(t){this.options=t,this._cachedAnimations=void 0,this.$context=void 0}_resolveAnimations(){const t=this._cachedAnimations;if(t)return t;const e=this.chart,i=this.options.setContext(this.getContext()),s=i.enabled&&e.options.animation&&i.animations,o=new Us(this.chart,s);return s._cacheable&&(this._cachedAnimations=Object.freeze(o)),o}getContext(){return this.$context||(this.$context=(t=this.chart.getContext(),e=this,i=this._tooltipItems,Ui(t,{tooltip:e,tooltipItems:i,type:"tooltip"})));var t,e,i}getTitle(t,e){const{callbacks:i}=e,s=ma(i,"beforeTitle",this,t),o=ma(i,"title",this,t),n=ma(i,"afterTitle",this,t);let r=[];return r=na(r,ra(s)),r=na(r,ra(o)),r=na(r,ra(n)),r}getBeforeBody(t,e){return pa(ma(e.callbacks,"beforeBody",this,t))}getBody(t,e){const{callbacks:i}=e,s=[];return ne(t,t=>{const e={before:[],lines:[],after:[]},o=ga(i,t);na(e.before,ra(ma(o,"beforeLabel",this,t))),na(e.lines,ma(o,"label",this,t)),na(e.after,ra(ma(o,"afterLabel",this,t))),s.push(e)}),s}getAfterBody(t,e){return pa(ma(e.callbacks,"afterBody",this,t))}getFooter(t,e){const{callbacks:i}=e,s=ma(i,"beforeFooter",this,t),o=ma(i,"footer",this,t),n=ma(i,"afterFooter",this,t);let r=[];return r=na(r,ra(s)),r=na(r,ra(o)),r=na(r,ra(n)),r}_createItems(t){const e=this._active,i=this.chart.data,s=[],o=[],n=[];let r,a,l=[];for(r=0,a=e.length;r<a;++r)l.push(aa(this.chart,e[r]));return t.filter&&(l=l.filter((e,s,o)=>t.filter(e,s,o,i))),t.itemSort&&(l=l.sort((e,s)=>t.itemSort(e,s,i))),ne(l,e=>{const i=ga(t.callbacks,e);s.push(ma(i,"labelColor",this,e)),o.push(ma(i,"labelPointStyle",this,e)),n.push(ma(i,"labelTextColor",this,e))}),this.labelColors=s,this.labelPointStyles=o,this.labelTextColors=n,this.dataPoints=l,l}update(t,e){const i=this.options.setContext(this.getContext()),s=this._active;let o,n=[];if(s.length){const t=oa[i.position].call(this,s,this._eventPosition);n=this._createItems(i),this.title=this.getTitle(n,i),this.beforeBody=this.getBeforeBody(n,i),this.body=this.getBody(n,i),this.afterBody=this.getAfterBody(n,i),this.footer=this.getFooter(n,i);const e=this._size=la(this,i),r=Object.assign({},t,e),a=ca(this.chart,i,r),l=da(i,r,a,this.chart);this.xAlign=a.xAlign,this.yAlign=a.yAlign,o={opacity:1,x:l.x,y:l.y,width:e.width,height:e.height,caretX:t.x,caretY:t.y}}else 0!==this.opacity&&(o={opacity:0});this._tooltipItems=n,this.$context=void 0,o&&this._resolveAnimations().update(this,o),t&&i.external&&i.external.call(this,{chart:this.chart,tooltip:this,replay:e})}drawCaret(t,e,i,s){const o=this.getCaretPosition(t,i,s);e.lineTo(o.x1,o.y1),e.lineTo(o.x2,o.y2),e.lineTo(o.x3,o.y3)}getCaretPosition(t,e,i){const{xAlign:s,yAlign:o}=this,{caretSize:n,cornerRadius:r}=i,{topLeft:a,topRight:l,bottomLeft:h,bottomRight:c}=Bi(r),{x:d,y:u}=t,{width:p,height:g}=e;let f,m,b,x,_,y;return"center"===o?(_=u+g/2,"left"===s?(f=d,m=f-n,x=_+n,y=_-n):(f=d+p,m=f+n,x=_-n,y=_+n),b=f):(m="left"===s?d+Math.max(a,h)+n:"right"===s?d+p-Math.max(l,c)-n:this.caretX,"top"===o?(x=u,_=x-n,f=m-n,b=m+n):(x=u+g,_=x+n,f=m+n,b=m-n),y=x),{x1:f,x2:m,x3:b,y1:x,y2:_,y3:y}}drawTitle(t,e,i){const s=this.title,o=s.length;let n,r,a;if(o){const l=Ps(i.rtl,this.x,this.width);for(t.x=ua(this,i.titleAlign,i),e.textAlign=l.textAlign(i.titleAlign),e.textBaseline="middle",n=Wi(i.titleFont),r=i.titleSpacing,e.fillStyle=i.titleColor,e.font=n.string,a=0;a<o;++a)e.fillText(s[a],l.x(t.x),t.y+n.lineHeight/2),t.y+=n.lineHeight+r,a+1===o&&(t.y+=i.titleMarginBottom-r)}}_drawColorBox(t,e,i,s,o){const n=this.labelColors[i],r=this.labelPointStyles[i],{boxHeight:a,boxWidth:l}=o,h=Wi(o.bodyFont),c=ua(this,"left",o),d=s.x(c),u=a<h.lineHeight?(h.lineHeight-a)/2:0,p=e.y+u;if(o.usePointStyle){const e={radius:Math.min(l,a)/2,pointStyle:r.pointStyle,rotation:r.rotation,borderWidth:1},i=s.leftForLtr(d,l)+l/2,h=p+a/2;t.strokeStyle=o.multiKeyBackground,t.fillStyle=o.multiKeyBackground,ki(t,e,i,h),t.strokeStyle=n.borderColor,t.fillStyle=n.backgroundColor,ki(t,e,i,h)}else{t.lineWidth=Qt(n.borderWidth)?Math.max(...Object.values(n.borderWidth)):n.borderWidth||1,t.strokeStyle=n.borderColor,t.setLineDash(n.borderDash||[]),t.lineDashOffset=n.borderDashOffset||0;const e=s.leftForLtr(d,l),i=s.leftForLtr(s.xPlus(d,1),l-2),r=Bi(n.borderRadius);Object.values(r).some(t=>0!==t)?(t.beginPath(),t.fillStyle=o.multiKeyBackground,Li(t,{x:e,y:p,w:l,h:a,radius:r}),t.fill(),t.stroke(),t.fillStyle=n.backgroundColor,t.beginPath(),Li(t,{x:i,y:p+1,w:l-2,h:a-2,radius:r}),t.fill()):(t.fillStyle=o.multiKeyBackground,t.fillRect(e,p,l,a),t.strokeRect(e,p,l,a),t.fillStyle=n.backgroundColor,t.fillRect(i,p+1,l-2,a-2))}t.fillStyle=this.labelTextColors[i]}drawBody(t,e,i){const{body:s}=this,{bodySpacing:o,bodyAlign:n,displayColors:r,boxHeight:a,boxWidth:l,boxPadding:h}=i,c=Wi(i.bodyFont);let d=c.lineHeight,u=0;const p=Ps(i.rtl,this.x,this.width),g=function(i){e.fillText(i,p.x(t.x+u),t.y+d/2),t.y+=d+o},f=p.textAlign(n);let m,b,x,_,y,v,w;for(e.textAlign=n,e.textBaseline="middle",e.font=c.string,t.x=ua(this,f,i),e.fillStyle=i.bodyColor,ne(this.beforeBody,g),u=r&&"right"!==f?"center"===n?l/2+h:l+2+h:0,_=0,v=s.length;_<v;++_){for(m=s[_],b=this.labelTextColors[_],e.fillStyle=b,ne(m.before,g),x=m.lines,r&&x.length&&(this._drawColorBox(e,t,_,p,i),d=Math.max(c.lineHeight,a)),y=0,w=x.length;y<w;++y)g(x[y]),d=c.lineHeight;ne(m.after,g)}u=0,d=c.lineHeight,ne(this.afterBody,g),t.y-=o}drawFooter(t,e,i){const s=this.footer,o=s.length;let n,r;if(o){const a=Ps(i.rtl,this.x,this.width);for(t.x=ua(this,i.footerAlign,i),t.y+=i.footerMarginTop,e.textAlign=a.textAlign(i.footerAlign),e.textBaseline="middle",n=Wi(i.footerFont),e.fillStyle=i.footerColor,e.font=n.string,r=0;r<o;++r)e.fillText(s[r],a.x(t.x),t.y+n.lineHeight/2),t.y+=n.lineHeight+i.footerSpacing}}drawBackground(t,e,i,s){const{xAlign:o,yAlign:n}=this,{x:r,y:a}=t,{width:l,height:h}=i,{topLeft:c,topRight:d,bottomLeft:u,bottomRight:p}=Bi(s.cornerRadius);e.fillStyle=s.backgroundColor,e.strokeStyle=s.borderColor,e.lineWidth=s.borderWidth,e.beginPath(),e.moveTo(r+c,a),"top"===n&&this.drawCaret(t,e,i,s),e.lineTo(r+l-d,a),e.quadraticCurveTo(r+l,a,r+l,a+d),"center"===n&&"right"===o&&this.drawCaret(t,e,i,s),e.lineTo(r+l,a+h-p),e.quadraticCurveTo(r+l,a+h,r+l-p,a+h),"bottom"===n&&this.drawCaret(t,e,i,s),e.lineTo(r+u,a+h),e.quadraticCurveTo(r,a+h,r,a+h-u),"center"===n&&"left"===o&&this.drawCaret(t,e,i,s),e.lineTo(r,a+c),e.quadraticCurveTo(r,a,r+c,a),e.closePath(),e.fill(),s.borderWidth>0&&e.stroke()}_updateAnimationTarget(t){const e=this.chart,i=this.$animations,s=i&&i.x,o=i&&i.y;if(s||o){const i=oa[t.position].call(this,this._active,this._eventPosition);if(!i)return;const n=this._size=la(this,t),r=Object.assign({},i,this._size),a=ca(e,t,r),l=da(t,r,a,e);s._to===l.x&&o._to===l.y||(this.xAlign=a.xAlign,this.yAlign=a.yAlign,this.width=n.width,this.height=n.height,this.caretX=i.x,this.caretY=i.y,this._resolveAnimations().update(this,l))}}_willRender(){return!!this.opacity}draw(t){const e=this.options.setContext(this.getContext());let i=this.opacity;if(!i)return;this._updateAnimationTarget(e);const s={width:this.width,height:this.height},o={x:this.x,y:this.y};i=Math.abs(i)<.001?0:i;const n=Ni(e.padding),r=this.title.length||this.beforeBody.length||this.body.length||this.afterBody.length||this.footer.length;e.enabled&&r&&(t.save(),t.globalAlpha=i,this.drawBackground(o,t,s,e),Ds(t,e.textDirection),o.y+=n.top,this.drawTitle(o,t,e),this.drawBody(o,t,e),this.drawFooter(o,t,e),Es(t,e.textDirection),t.restore())}getActiveElements(){return this._active||[]}setActiveElements(t,e){const i=this._active,s=t.map(({datasetIndex:t,index:e})=>{const i=this.chart.getDatasetMeta(t);if(!i)throw new Error("Cannot find a dataset at index "+t);return{datasetIndex:t,element:i.data[e],index:e}}),o=!re(i,s),n=this._positionChanged(s,e);(o||n)&&(this._active=s,this._eventPosition=e,this._ignoreReplayEvents=!0,this.update(!0))}handleEvent(t,e,i=!0){if(e&&this._ignoreReplayEvents)return!1;this._ignoreReplayEvents=!1;const s=this.options,o=this._active||[],n=this._getActiveElements(t,o,e,i),r=this._positionChanged(n,t),a=e||!re(n,o)||r;return a&&(this._active=n,(s.enabled||s.external)&&(this._eventPosition={x:t.x,y:t.y},this.update(!0,e))),a}_getActiveElements(t,e,i,s){const o=this.options;if("mouseout"===t.type)return[];if(!s)return e.filter(t=>this.chart.data.datasets[t.datasetIndex]&&void 0!==this.chart.getDatasetMeta(t.datasetIndex).controller.getParsed(t.index));const n=this.chart.getElementsAtEventForMode(t,o.mode,o,i);return o.reverse&&n.reverse(),n}_positionChanged(t,e){const{caretX:i,caretY:s,options:o}=this,n=oa[o.position].call(this,t,e);return!1!==n&&(i!==n.x||s!==n.y)}}s(ba,"positioners",oa);var xa={id:"tooltip",_element:ba,positioners:oa,afterInit(t,e,i){i&&(t.tooltip=new ba({chart:t,options:i}))},beforeUpdate(t,e,i){t.tooltip&&t.tooltip.initialize(i)},reset(t,e,i){t.tooltip&&t.tooltip.initialize(i)},afterDraw(t){const e=t.tooltip;if(e&&e._willRender()){const i={tooltip:e};if(!1===t.notifyPlugins("beforeTooltipDraw",{...i,cancelable:!0}))return;e.draw(t.ctx),t.notifyPlugins("afterTooltipDraw",i)}},afterEvent(t,e){if(t.tooltip){const i=e.replay;t.tooltip.handleEvent(e.event,i,e.inChartArea)&&(e.changed=!0)}},defaults:{enabled:!0,external:null,position:"average",backgroundColor:"rgba(0,0,0,0.8)",titleColor:"#fff",titleFont:{weight:"bold"},titleSpacing:2,titleMarginBottom:6,titleAlign:"left",bodyColor:"#fff",bodySpacing:2,bodyFont:{},bodyAlign:"left",footerColor:"#fff",footerSpacing:2,footerMarginTop:6,footerFont:{weight:"bold"},footerAlign:"left",padding:6,caretPadding:2,caretSize:5,cornerRadius:6,boxHeight:(t,e)=>e.bodyFont.size,boxWidth:(t,e)=>e.bodyFont.size,multiKeyBackground:"#fff",displayColors:!0,boxPadding:0,borderColor:"rgba(0,0,0,0)",borderWidth:0,animation:{duration:400,easing:"easeOutQuart"},animations:{numbers:{type:"number",properties:["x","y","width","height","caretX","caretY"]},opacity:{easing:"linear",duration:200}},callbacks:fa},defaultRoutes:{bodyFont:"font",footerFont:"font",titleFont:"font"},descriptors:{_scriptable:t=>"filter"!==t&&"itemSort"!==t&&"external"!==t,_indexable:!1,callbacks:{_scriptable:!1,_indexable:!1},animation:{_fallback:!1},animations:{_fallback:"animation"}},additionalOptionScopes:["interaction"]},_a=Object.freeze({__proto__:null,Colors:Pr,Decimation:Or,Filler:Gr,Legend:Qr,SubTitle:sa,Title:ea,Tooltip:xa});function ya(t,e,i,s){const o=t.indexOf(e);if(-1===o)return((t,e,i,s)=>("string"==typeof e?(i=t.push(e)-1,s.unshift({index:i,label:e})):isNaN(e)&&(i=null),i))(t,e,i,s);return o!==t.lastIndexOf(e)?i:o}function va(t){const e=this.getLabels();return t>=0&&t<e.length?e[t]:t}class wa extends _n{constructor(t){super(t),this._startValue=void 0,this._valueRange=0,this._addedLabels=[]}init(t){const e=this._addedLabels;if(e.length){const t=this.getLabels();for(const{index:i,label:s}of e)t[i]===s&&t.splice(i,1);this._addedLabels=[]}super.init(t)}parse(t,e){if(Jt(t))return null;const i=this.getLabels();return((t,e)=>null===t?null:Be(Math.round(t),0,e))(e=isFinite(e)&&i[e]===t?e:ya(i,t,ie(e,t),this._addedLabels),i.length-1)}determineDataLimits(){const{minDefined:t,maxDefined:e}=this.getUserBounds();let{min:i,max:s}=this.getMinMax(!0);"ticks"===this.options.bounds&&(t||(i=0),e||(s=this.getLabels().length-1)),this.min=i,this.max=s}buildTicks(){const t=this.min,e=this.max,i=this.options.offset,s=[];let o=this.getLabels();o=0===t&&e===o.length-1?o:o.slice(t,e+1),this._valueRange=Math.max(o.length-(i?0:1),1),this._startValue=this.min-(i?.5:0);for(let n=t;n<=e;n++)s.push({value:n});return s}getLabelForValue(t){return va.call(this,t)}configure(){super.configure(),this.isHorizontal()||(this._reversePixels=!this._reversePixels)}getPixelForValue(t){return"number"!=typeof t&&(t=this.parse(t)),null===t?NaN:this.getPixelForDecimal((t-this._startValue)/this._valueRange)}getPixelForTick(t){const e=this.ticks;return t<0||t>e.length-1?null:this.getPixelForValue(e[t].value)}getValueForPixel(t){return Math.round(this._startValue+this.getDecimalForPixel(t)*this._valueRange)}getBasePixel(){return this.bottom}}function Ma(t,e){const i=[],{bounds:s,step:o,min:n,max:r,precision:a,count:l,maxTicks:h,maxDigits:c,includeBounds:d}=t,u=o||1,p=h-1,{min:g,max:f}=e,m=!Jt(n),b=!Jt(r),x=!Jt(l),_=(f-g)/(c+1);let y,v,w,M,k=Ee((f-g)/p/u)*u;if(k<1e-14&&!m&&!b)return[{value:g},{value:f}];M=Math.ceil(f/k)-Math.floor(g/k),M>p&&(k=Ee(M*k/p/u)*u),Jt(a)||(y=Math.pow(10,a),k=Math.ceil(k*y)/y),"ticks"===s?(v=Math.floor(g/k)*k,w=Math.ceil(f/k)*k):(v=g,w=f),m&&b&&o&&function(t,e){const i=Math.round(t);return i-e<=t&&i+e>=t}((r-n)/o,k/1e3)?(M=Math.round(Math.min((r-n)/k,h)),k=(r-n)/M,v=n,w=r):x?(v=m?n:v,w=b?r:w,M=l-1,k=(w-v)/M):(M=(w-v)/k,M=De(M,Math.round(M),k/1e3)?Math.round(M):Math.ceil(M));const S=Math.max($e(k),$e(v));y=Math.pow(10,Jt(a)?S:a),v=Math.round(v*y)/y,w=Math.round(w*y)/y;let C=0;for(m&&(d&&v!==n?(i.push({value:n}),v<n&&C++,De(Math.round((v+C*k)*y)/y,n,ka(n,_,t))&&C++):v<n&&C++);C<M;++C){const t=Math.round((v+C*k)*y)/y;if(b&&t>r)break;i.push({value:t})}return b&&d&&w!==r?i.length&&De(i[i.length-1].value,r,ka(r,_,t))?i[i.length-1].value=r:i.push({value:r}):b&&w!==r||i.push({value:w}),i}function ka(t,e,{horizontal:i,minRotation:s}){const o=Re(s),n=(i?Math.sin(o):Math.cos(o))||.001,r=.75*e*(""+t).length;return Math.min(e/n,r)}s(wa,"id","category"),s(wa,"defaults",{ticks:{callback:va}});class Sa extends _n{constructor(t){super(t),this.start=void 0,this.end=void 0,this._startValue=void 0,this._endValue=void 0,this._valueRange=0}parse(t,e){return Jt(t)||("number"==typeof t||t instanceof Number)&&!isFinite(+t)?null:+t}handleTickRangeOptions(){const{beginAtZero:t}=this.options,{minDefined:e,maxDefined:i}=this.getUserBounds();let{min:s,max:o}=this;const n=t=>s=e?s:t,r=t=>o=i?o:t;if(t){const t=Pe(s),e=Pe(o);t<0&&e<0?r(0):t>0&&e>0&&n(0)}if(s===o){let e=0===o?1:Math.abs(.05*o);r(o+e),t||n(s-e)}this.min=s,this.max=o}getTickLimit(){const t=this.options.ticks;let e,{maxTicksLimit:i,stepSize:s}=t;return s?(e=Math.ceil(this.max/s)-Math.floor(this.min/s)+1,e>1e3&&(console.warn(`scales.${this.id}.ticks.stepSize: ${s} would result generating up to ${e} ticks. Limiting to 1000.`),e=1e3)):(e=this.computeTickLimit(),i=i||11),i&&(e=Math.min(i,e)),e}computeTickLimit(){return Number.POSITIVE_INFINITY}buildTicks(){const t=this.options,e=t.ticks;let i=this.getTickLimit();i=Math.max(2,i);const s=Ma({maxTicks:i,bounds:t.bounds,min:t.min,max:t.max,precision:e.precision,step:e.stepSize,count:e.count,maxDigits:this._maxDigits(),horizontal:this.isHorizontal(),minRotation:e.minRotation||0,includeBounds:!1!==e.includeBounds},this._range||this);return"ticks"===t.bounds&&Te(s,this,"value"),t.reverse?(s.reverse(),this.start=this.max,this.end=this.min):(this.start=this.min,this.end=this.max),s}configure(){const t=this.ticks;let e=this.min,i=this.max;if(super.configure(),this.options.offset&&t.length){const s=(i-e)/Math.max(t.length-1,1)/2;e-=s,i+=s}this._startValue=e,this._endValue=i,this._valueRange=i-e}getLabelForValue(t){return di(t,this.chart.options.locale,this.options.ticks.format)}}class Ca extends Sa{determineDataLimits(){const{min:t,max:e}=this.getMinMax(!0);this.min=te(t)?t:0,this.max=te(e)?e:1,this.handleTickRangeOptions()}computeTickLimit(){const t=this.isHorizontal(),e=t?this.width:this.height,i=Re(this.options.ticks.minRotation),s=(t?Math.sin(i):Math.cos(i))||.001,o=this._resolveTickFontOptions(0);return Math.ceil(e/Math.min(40,o.lineHeight/s))}getPixelForValue(t){return null===t?NaN:this.getPixelForDecimal((t-this._startValue)/this._valueRange)}getValueForPixel(t){return this._startValue+this.getDecimalForPixel(t)*this._valueRange}}s(Ca,"id","linear"),s(Ca,"defaults",{ticks:{callback:pi.formatters.numeric}});const Aa=t=>Math.floor(Ae(t)),Pa=(t,e)=>Math.pow(10,Aa(t)+e);function Da(t){return 1===t/Math.pow(10,Aa(t))}function Ea(t,e,i){const s=Math.pow(10,i),o=Math.floor(t/s);return Math.ceil(e/s)-o}function Oa(t,{min:e,max:i}){e=ee(t.min,e);const s=[],o=Aa(e);let n=function(t,e){let i=Aa(e-t);for(;Ea(t,e,i)>10;)i++;for(;Ea(t,e,i)<10;)i--;return Math.min(i,Aa(t))}(e,i),r=n<0?Math.pow(10,Math.abs(n)):1;const a=Math.pow(10,n),l=o>n?Math.pow(10,o):0,h=Math.round((e-l)*r)/r,c=Math.floor((e-l)/a/10)*a*10;let d=Math.floor((h-c)/Math.pow(10,n)),u=ee(t.min,Math.round((l+c+d*Math.pow(10,n))*r)/r);for(;u<i;)s.push({value:u,major:Da(u),significand:d}),d>=10?d=d<15?15:20:d++,d>=20&&(n++,d=2,r=n>=0?1:r),u=Math.round((l+c+d*Math.pow(10,n))*r)/r;const p=ee(t.max,u);return s.push({value:p,major:Da(p),significand:d}),s}class Ta extends _n{constructor(t){super(t),this.start=void 0,this.end=void 0,this._startValue=void 0,this._valueRange=0}parse(t,e){const i=Sa.prototype.parse.apply(this,[t,e]);if(0!==i)return te(i)&&i>0?i:null;this._zero=!0}determineDataLimits(){const{min:t,max:e}=this.getMinMax(!0);this.min=te(t)?Math.max(0,t):null,this.max=te(e)?Math.max(0,e):null,this.options.beginAtZero&&(this._zero=!0),this._zero&&this.min!==this._suggestedMin&&!te(this._userMin)&&(this.min=t===Pa(this.min,0)?Pa(this.min,-1):Pa(this.min,0)),this.handleTickRangeOptions()}handleTickRangeOptions(){const{minDefined:t,maxDefined:e}=this.getUserBounds();let i=this.min,s=this.max;const o=e=>i=t?i:e,n=t=>s=e?s:t;i===s&&(i<=0?(o(1),n(10)):(o(Pa(i,-1)),n(Pa(s,1)))),i<=0&&o(Pa(s,-1)),s<=0&&n(Pa(i,1)),this.min=i,this.max=s}buildTicks(){const t=this.options,e=Oa({min:this._userMin,max:this._userMax},this);return"ticks"===t.bounds&&Te(e,this,"value"),t.reverse?(e.reverse(),this.start=this.max,this.end=this.min):(this.start=this.min,this.end=this.max),e}getLabelForValue(t){return void 0===t?"0":di(t,this.chart.options.locale,this.options.ticks.format)}configure(){const t=this.min;super.configure(),this._startValue=Ae(t),this._valueRange=Ae(this.max)-Ae(t)}getPixelForValue(t){return void 0!==t&&0!==t||(t=this.min),null===t||isNaN(t)?NaN:this.getPixelForDecimal(t===this.min?0:(Ae(t)-this._startValue)/this._valueRange)}getValueForPixel(t){const e=this.getDecimalForPixel(t);return Math.pow(10,this._startValue+e*this._valueRange)}}function Ra(t){const e=t.ticks;if(e.display&&t.display){const t=Ni(e.backdropPadding);return ie(e.font&&e.font.size,_i.font.size)+t.height}return 0}function La(t,e,i){return i=Zt(i)?i:[i],{w:vi(t,e.string,i),h:i.length*e.lineHeight}}function $a(t,e,i,s,o){return t===s||t===o?{start:e-i/2,end:e+i/2}:t<s||t>o?{start:e-i,end:e}:{start:e,end:e+i}}function Ia(t){const e={l:t.left+t._padding.left,r:t.right-t._padding.right,t:t.top+t._padding.top,b:t.bottom-t._padding.bottom},i=Object.assign({},e),s=[],o=[],n=t._pointLabels.length,r=t.options.pointLabels,a=r.centerPointLabels?_e/n:0;for(let l=0;l<n;l++){const n=r.setContext(t.getPointLabelContext(l));o[l]=n.padding;const h=t.getPointPosition(l,t.drawingArea+o[l],a),c=Wi(n.font),d=La(t.ctx,c,t._pointLabels[l]);s[l]=d;const u=He(t.getIndexAngle(l)+a),p=Math.round(Le(u));za(i,e,u,$a(p,h.x,d.w,0,180),$a(p,h.y,d.h,90,270))}t.setCenterPoint(e.l-i.l,i.r-e.r,e.t-i.t,i.b-e.b),t._pointLabelItems=function(t,e,i){const s=[],o=t._pointLabels.length,n=t.options,{centerPointLabels:r,display:a}=n.pointLabels,l={extra:Ra(n)/2,additionalAngle:r?_e/o:0};let h;for(let c=0;c<o;c++){l.padding=i[c],l.size=e[c];const o=Fa(t,c,l);s.push(o),"auto"===a&&(o.visible=Ha(o,h),o.visible&&(h=o))}return s}(t,s,o)}function za(t,e,i,s,o){const n=Math.abs(Math.sin(i)),r=Math.abs(Math.cos(i));let a=0,l=0;s.start<e.l?(a=(e.l-s.start)/n,t.l=Math.min(t.l,e.l-a)):s.end>e.r&&(a=(s.end-e.r)/n,t.r=Math.max(t.r,e.r+a)),o.start<e.t?(l=(e.t-o.start)/r,t.t=Math.min(t.t,e.t-l)):o.end>e.b&&(l=(o.end-e.b)/r,t.b=Math.max(t.b,e.b+l))}function Fa(t,e,i){const s=t.drawingArea,{extra:o,additionalAngle:n,padding:r,size:a}=i,l=t.getPointPosition(e,s+o+r,n),h=Math.round(Le(He(l.angle+ke))),c=function(t,e,i){90===i||270===i?t-=e/2:(i>270||i<90)&&(t-=e);return t}(l.y,a.h,h),d=function(t){if(0===t||180===t)return"center";if(t<180)return"left";return"right"}(h),u=function(t,e,i){"right"===i?t-=e:"center"===i&&(t-=e/2);return t}(l.x,a.w,d);return{visible:!0,x:l.x,y:c,textAlign:d,left:u,top:c,right:u+a.w,bottom:c+a.h}}function Ha(t,e){if(!e)return!0;const{left:i,top:s,right:o,bottom:n}=t;return!(Ci({x:i,y:s},e)||Ci({x:i,y:n},e)||Ci({x:o,y:s},e)||Ci({x:o,y:n},e))}function Va(t,e,i){const{left:s,top:o,right:n,bottom:r}=i,{backdropColor:a}=e;if(!Jt(a)){const i=Bi(e.borderRadius),l=Ni(e.backdropPadding);t.fillStyle=a;const h=s-l.left,c=o-l.top,d=n-s+l.width,u=r-o+l.height;Object.values(i).some(t=>0!==t)?(t.beginPath(),Li(t,{x:h,y:c,w:d,h:u,radius:i}),t.fill()):t.fillRect(h,c,d,u)}}function Ba(t,e,i,s){const{ctx:o}=t;if(i)o.arc(t.xCenter,t.yCenter,e,0,ye);else{let i=t.getPointPosition(0,e);o.moveTo(i.x,i.y);for(let n=1;n<s;n++)i=t.getPointPosition(n,e),o.lineTo(i.x,i.y)}}s(Ta,"id","logarithmic"),s(Ta,"defaults",{ticks:{callback:pi.formatters.logarithmic,major:{enabled:!0}}});class Na extends Sa{constructor(t){super(t),this.xCenter=void 0,this.yCenter=void 0,this.drawingArea=void 0,this._pointLabels=[],this._pointLabelItems=[]}setDimensions(){const t=this._padding=Ni(Ra(this.options)/2),e=this.width=this.maxWidth-t.width,i=this.height=this.maxHeight-t.height;this.xCenter=Math.floor(this.left+e/2+t.left),this.yCenter=Math.floor(this.top+i/2+t.top),this.drawingArea=Math.floor(Math.min(e,i)/2)}determineDataLimits(){const{min:t,max:e}=this.getMinMax(!1);this.min=te(t)&&!isNaN(t)?t:0,this.max=te(e)&&!isNaN(e)?e:0,this.handleTickRangeOptions()}computeTickLimit(){return Math.ceil(this.drawingArea/Ra(this.options))}generateTickLabels(t){Sa.prototype.generateTickLabels.call(this,t),this._pointLabels=this.getLabels().map((t,e)=>{const i=oe(this.options.pointLabels.callback,[t,e],this);return i||0===i?i:""}).filter((t,e)=>this.chart.getDataVisibility(e))}fit(){const t=this.options;t.display&&t.pointLabels.display?Ia(this):this.setCenterPoint(0,0,0,0)}setCenterPoint(t,e,i,s){this.xCenter+=Math.floor((t-e)/2),this.yCenter+=Math.floor((i-s)/2),this.drawingArea-=Math.min(this.drawingArea/2,Math.max(t,e,i,s))}getIndexAngle(t){return He(t*(ye/(this._pointLabels.length||1))+Re(this.options.startAngle||0))}getDistanceFromCenterForValue(t){if(Jt(t))return NaN;const e=this.drawingArea/(this.max-this.min);return this.options.reverse?(this.max-t)*e:(t-this.min)*e}getValueForDistanceFromCenter(t){if(Jt(t))return NaN;const e=t/(this.drawingArea/(this.max-this.min));return this.options.reverse?this.max-e:this.min+e}getPointLabelContext(t){const e=this._pointLabels||[];if(t>=0&&t<e.length){const i=e[t];return function(t,e,i){return Ui(t,{label:i,index:e,type:"pointLabel"})}(this.getContext(),t,i)}}getPointPosition(t,e,i=0){const s=this.getIndexAngle(t)-ke+i;return{x:Math.cos(s)*e+this.xCenter,y:Math.sin(s)*e+this.yCenter,angle:s}}getPointPositionForValue(t,e){return this.getPointPosition(t,this.getDistanceFromCenterForValue(e))}getBasePosition(t){return this.getPointPositionForValue(t||0,this.getBaseValue())}getPointLabelPosition(t){const{left:e,top:i,right:s,bottom:o}=this._pointLabelItems[t];return{left:e,top:i,right:s,bottom:o}}drawBackground(){const{backgroundColor:t,grid:{circular:e}}=this.options;if(t){const i=this.ctx;i.save(),i.beginPath(),Ba(this,this.getDistanceFromCenterForValue(this._endValue),e,this._pointLabels.length),i.closePath(),i.fillStyle=t,i.fill(),i.restore()}}drawGrid(){const t=this.ctx,e=this.options,{angleLines:i,grid:s,border:o}=e,n=this._pointLabels.length;let r,a,l;if(e.pointLabels.display&&function(t,e){const{ctx:i,options:{pointLabels:s}}=t;for(let o=e-1;o>=0;o--){const e=t._pointLabelItems[o];if(!e.visible)continue;const n=s.setContext(t.getPointLabelContext(o));Va(i,n,e);const r=Wi(n.font),{x:a,y:l,textAlign:h}=e;Ri(i,t._pointLabels[o],a,l+r.lineHeight/2,r,{color:n.color,textAlign:h,textBaseline:"middle"})}}(this,n),s.display&&this.ticks.forEach((t,e)=>{if(0!==e||0===e&&this.min<0){a=this.getDistanceFromCenterForValue(t.value);const i=this.getContext(e),r=s.setContext(i),l=o.setContext(i);!function(t,e,i,s,o){const n=t.ctx,r=e.circular,{color:a,lineWidth:l}=e;!r&&!s||!a||!l||i<0||(n.save(),n.strokeStyle=a,n.lineWidth=l,n.setLineDash(o.dash||[]),n.lineDashOffset=o.dashOffset,n.beginPath(),Ba(t,i,r,s),n.closePath(),n.stroke(),n.restore())}(this,r,a,n,l)}}),i.display){for(t.save(),r=n-1;r>=0;r--){const s=i.setContext(this.getPointLabelContext(r)),{color:o,lineWidth:n}=s;n&&o&&(t.lineWidth=n,t.strokeStyle=o,t.setLineDash(s.borderDash),t.lineDashOffset=s.borderDashOffset,a=this.getDistanceFromCenterForValue(e.reverse?this.min:this.max),l=this.getPointPosition(r,a),t.beginPath(),t.moveTo(this.xCenter,this.yCenter),t.lineTo(l.x,l.y),t.stroke())}t.restore()}}drawBorder(){}drawLabels(){const t=this.ctx,e=this.options,i=e.ticks;if(!i.display)return;const s=this.getIndexAngle(0);let o,n;t.save(),t.translate(this.xCenter,this.yCenter),t.rotate(s),t.textAlign="center",t.textBaseline="middle",this.ticks.forEach((s,r)=>{if(0===r&&this.min>=0&&!e.reverse)return;const a=i.setContext(this.getContext(r)),l=Wi(a.font);if(o=this.getDistanceFromCenterForValue(this.ticks[r].value),a.showLabelBackdrop){t.font=l.string,n=t.measureText(s.label).width,t.fillStyle=a.backdropColor;const e=Ni(a.backdropPadding);t.fillRect(-n/2-e.left,-o-l.size/2-e.top,n+e.width,l.size+e.height)}Ri(t,s.label,0,-o,l,{color:a.color,strokeColor:a.textStrokeColor,strokeWidth:a.textStrokeWidth})}),t.restore()}drawTitle(){}}s(Na,"id","radialLinear"),s(Na,"defaults",{display:!0,animate:!0,position:"chartArea",angleLines:{display:!0,lineWidth:1,borderDash:[],borderDashOffset:0},grid:{circular:!1},startAngle:0,ticks:{showLabelBackdrop:!0,callback:pi.formatters.numeric},pointLabels:{backdropColor:void 0,backdropPadding:2,display:!0,font:{size:10},callback:t=>t,padding:5,centerPointLabels:!1}}),s(Na,"defaultRoutes",{"angleLines.color":"borderColor","pointLabels.color":"color","ticks.color":"color"}),s(Na,"descriptors",{angleLines:{_fallback:"grid"}});const Wa={millisecond:{common:!0,size:1,steps:1e3},second:{common:!0,size:1e3,steps:60},minute:{common:!0,size:6e4,steps:60},hour:{common:!0,size:36e5,steps:24},day:{common:!0,size:864e5,steps:30},week:{common:!1,size:6048e5,steps:4},month:{common:!0,size:2628e6,steps:12},quarter:{common:!1,size:7884e6,steps:4},year:{common:!0,size:3154e7}},ja=Object.keys(Wa);function Ua(t,e){return t-e}function Ya(t,e){if(Jt(e))return null;const i=t._adapter,{parser:s,round:o,isoWeekday:n}=t._parseOpts;let r=e;return"function"==typeof s&&(r=s(r)),te(r)||(r="string"==typeof s?i.parse(r,s):i.parse(r)),null===r?null:(o&&(r="week"!==o||!Oe(n)&&!0!==n?i.startOf(r,o):i.startOf(r,"isoWeek",n)),+r)}function Xa(t,e,i,s){const o=ja.length;for(let n=ja.indexOf(t);n<o-1;++n){const t=Wa[ja[n]],o=t.steps?t.steps:Number.MAX_SAFE_INTEGER;if(t.common&&Math.ceil((i-e)/(o*t.size))<=s)return ja[n]}return ja[o-1]}function qa(t,e,i){if(i){if(i.length){const{lo:s,hi:o}=We(i,e);t[i[s]>=e?i[s]:i[o]]=!0}}else t[e]=!0}function Ga(t,e,i){const s=[],o={},n=e.length;let r,a;for(r=0;r<n;++r)a=e[r],o[a]=r,s.push({value:a,major:!1});return 0!==n&&i?function(t,e,i,s){const o=t._adapter,n=+o.startOf(e[0].value,s),r=e[e.length-1].value;let a,l;for(a=n;a<=r;a=+o.add(a,1,s))l=i[a],l>=0&&(e[l].major=!0);return e}(t,s,o,i):s}class Ka extends _n{constructor(t){super(t),this._cache={data:[],labels:[],all:[]},this._unit="day",this._majorUnit=void 0,this._offsets={},this._normalized=!1,this._parseOpts=void 0}init(t,e={}){const i=t.time||(t.time={}),s=this._adapter=new ko(t.adapters.date);s.init(e),de(i.displayFormats,s.formats()),this._parseOpts={parser:i.parser,round:i.round,isoWeekday:i.isoWeekday},super.init(t),this._normalized=e.normalized}parse(t,e){return void 0===t?null:Ya(this,t)}beforeLayout(){super.beforeLayout(),this._cache={data:[],labels:[],all:[]}}determineDataLimits(){const t=this.options,e=this._adapter,i=t.time.unit||"day";let{min:s,max:o,minDefined:n,maxDefined:r}=this.getUserBounds();function a(t){n||isNaN(t.min)||(s=Math.min(s,t.min)),r||isNaN(t.max)||(o=Math.max(o,t.max))}n&&r||(a(this._getLabelBounds()),"ticks"===t.bounds&&"labels"===t.ticks.source||a(this.getMinMax(!1))),s=te(s)&&!isNaN(s)?s:+e.startOf(Date.now(),i),o=te(o)&&!isNaN(o)?o:+e.endOf(Date.now(),i)+1,this.min=Math.min(s,o-1),this.max=Math.max(s+1,o)}_getLabelBounds(){const t=this.getLabelTimestamps();let e=Number.POSITIVE_INFINITY,i=Number.NEGATIVE_INFINITY;return t.length&&(e=t[0],i=t[t.length-1]),{min:e,max:i}}buildTicks(){const t=this.options,e=t.time,i=t.ticks,s="labels"===i.source?this.getLabelTimestamps():this._generate();"ticks"===t.bounds&&s.length&&(this.min=this._userMin||s[0],this.max=this._userMax||s[s.length-1]);const o=this.min,n=function(t,e,i){let s=0,o=t.length;for(;s<o&&t[s]<e;)s++;for(;o>s&&t[o-1]>i;)o--;return s>0||o<t.length?t.slice(s,o):t}(s,o,this.max);return this._unit=e.unit||(i.autoSkip?Xa(e.minUnit,this.min,this.max,this._getLabelCapacity(o)):function(t,e,i,s,o){for(let n=ja.length-1;n>=ja.indexOf(i);n--){const i=ja[n];if(Wa[i].common&&t._adapter.diff(o,s,i)>=e-1)return i}return ja[i?ja.indexOf(i):0]}(this,n.length,e.minUnit,this.min,this.max)),this._majorUnit=i.major.enabled&&"year"!==this._unit?function(t){for(let e=ja.indexOf(t)+1,i=ja.length;e<i;++e)if(Wa[ja[e]].common)return ja[e]}(this._unit):void 0,this.initOffsets(s),t.reverse&&n.reverse(),Ga(this,n,this._majorUnit)}afterAutoSkip(){this.options.offsetAfterAutoskip&&this.initOffsets(this.ticks.map(t=>+t.value))}initOffsets(t=[]){let e,i,s=0,o=0;this.options.offset&&t.length&&(e=this.getDecimalForValue(t[0]),s=1===t.length?1-e:(this.getDecimalForValue(t[1])-e)/2,i=this.getDecimalForValue(t[t.length-1]),o=1===t.length?i:(i-this.getDecimalForValue(t[t.length-2]))/2);const n=t.length<3?.5:.25;s=Be(s,0,n),o=Be(o,0,n),this._offsets={start:s,end:o,factor:1/(s+1+o)}}_generate(){const t=this._adapter,e=this.min,i=this.max,s=this.options,o=s.time,n=o.unit||Xa(o.minUnit,e,i,this._getLabelCapacity(e)),r=ie(s.ticks.stepSize,1),a="week"===n&&o.isoWeekday,l=Oe(a)||!0===a,h={};let c,d,u=e;if(l&&(u=+t.startOf(u,"isoWeek",a)),u=+t.startOf(u,l?"day":n),t.diff(i,e,n)>1e5*r)throw new Error(e+" and "+i+" are too far apart with stepSize of "+r+" "+n);const p="data"===s.ticks.source&&this.getDataTimestamps();for(c=u,d=0;c<i;c=+t.add(c,r,n),d++)qa(h,c,p);return c!==i&&"ticks"!==s.bounds&&1!==d||qa(h,c,p),Object.keys(h).sort(Ua).map(t=>+t)}getLabelForValue(t){const e=this._adapter,i=this.options.time;return i.tooltipFormat?e.format(t,i.tooltipFormat):e.format(t,i.displayFormats.datetime)}format(t,e){const i=this.options.time.displayFormats,s=this._unit,o=e||i[s];return this._adapter.format(t,o)}_tickFormatFunction(t,e,i,s){const o=this.options,n=o.ticks.callback;if(n)return oe(n,[t,e,i],this);const r=o.time.displayFormats,a=this._unit,l=this._majorUnit,h=a&&r[a],c=l&&r[l],d=i[e],u=l&&c&&d&&d.major;return this._adapter.format(t,s||(u?c:h))}generateTickLabels(t){let e,i,s;for(e=0,i=t.length;e<i;++e)s=t[e],s.label=this._tickFormatFunction(s.value,e,t)}getDecimalForValue(t){return null===t?NaN:(t-this.min)/(this.max-this.min)}getPixelForValue(t){const e=this._offsets,i=this.getDecimalForValue(t);return this.getPixelForDecimal((e.start+i)*e.factor)}getValueForPixel(t){const e=this._offsets,i=this.getDecimalForPixel(t)/e.factor-e.end;return this.min+i*(this.max-this.min)}_getLabelSize(t){const e=this.options.ticks,i=this.ctx.measureText(t).width,s=Re(this.isHorizontal()?e.maxRotation:e.minRotation),o=Math.cos(s),n=Math.sin(s),r=this._resolveTickFontOptions(0).size;return{w:i*o+r*n,h:i*n+r*o}}_getLabelCapacity(t){const e=this.options.time,i=e.displayFormats,s=i[e.unit]||i.millisecond,o=this._tickFormatFunction(t,0,Ga(this,[t],this._majorUnit),s),n=this._getLabelSize(o),r=Math.floor(this.isHorizontal()?this.width/n.w:this.height/n.h)-1;return r>0?r:1}getDataTimestamps(){let t,e,i=this._cache.data||[];if(i.length)return i;const s=this.getMatchingVisibleMetas();if(this._normalized&&s.length)return this._cache.data=s[0].controller.getAllParsedValues(this);for(t=0,e=s.length;t<e;++t)i=i.concat(s[t].controller.getAllParsedValues(this));return this._cache.data=this.normalize(i)}getLabelTimestamps(){const t=this._cache.labels||[];let e,i;if(t.length)return t;const s=this.getLabels();for(e=0,i=s.length;e<i;++e)t.push(Ya(this,s[e]));return this._cache.labels=this._normalized?t:this.normalize(t)}normalize(t){return qe(t.sort(Ua))}}function Ja(t,e,i){let s,o,n,r,a=0,l=t.length-1;i?(e>=t[a].pos&&e<=t[l].pos&&({lo:a,hi:l}=je(t,"pos",e)),({pos:s,time:n}=t[a]),({pos:o,time:r}=t[l])):(e>=t[a].time&&e<=t[l].time&&({lo:a,hi:l}=je(t,"time",e)),({time:s,pos:n}=t[a]),({time:o,pos:r}=t[l]));const h=o-s;return h?n+(r-n)*(e-s)/h:n}s(Ka,"id","time"),s(Ka,"defaults",{bounds:"data",adapters:{},time:{parser:!1,unit:!1,round:!1,isoWeekday:!1,minUnit:"millisecond",displayFormats:{}},ticks:{source:"auto",callback:!1,major:{enabled:!1}}});class Za extends Ka{constructor(t){super(t),this._table=[],this._minPos=void 0,this._tableRange=void 0}initOffsets(){const t=this._getTimestampsForTable(),e=this._table=this.buildLookupTable(t);this._minPos=Ja(e,this.min),this._tableRange=Ja(e,this.max)-this._minPos,super.initOffsets(t)}buildLookupTable(t){const{min:e,max:i}=this,s=[],o=[];let n,r,a,l,h;for(n=0,r=t.length;n<r;++n)l=t[n],l>=e&&l<=i&&s.push(l);if(s.length<2)return[{time:e,pos:0},{time:i,pos:1}];for(n=0,r=s.length;n<r;++n)h=s[n+1],a=s[n-1],l=s[n],Math.round((h+a)/2)!==l&&o.push({time:l,pos:n/(r-1)});return o}_generate(){const t=this.min,e=this.max;let i=super.getDataTimestamps();return i.includes(t)&&i.length||i.splice(0,0,t),i.includes(e)&&1!==i.length||i.push(e),i.sort((t,e)=>t-e)}_getTimestampsForTable(){let t=this._cache.all||[];if(t.length)return t;const e=this.getDataTimestamps(),i=this.getLabelTimestamps();return t=e.length&&i.length?this.normalize(e.concat(i)):e.length?e:i,t=this._cache.all=t,t}getDecimalForValue(t){return(Ja(this._table,t)-this._minPos)/this._tableRange}getValueForPixel(t){const e=this._offsets,i=this.getDecimalForPixel(t)/e.factor-e.end;return Ja(this._table,i*this._tableRange+this._minPos,!0)}}s(Za,"id","timeseries"),s(Za,"defaults",Ka.defaults);const Qa=[vo,vr,_a,Object.freeze({__proto__:null,CategoryScale:wa,LinearScale:Ca,LogarithmicScale:Ta,RadialLinearScale:Na,TimeScale:Ka,TimeSeriesScale:Za})],tl=h`
+  :host {
+    --chart-height: 250px;
   }
 
-  if (chartJSPromise) {
-    return chartJSPromise;
+  ha-card {
+    overflow: hidden;
   }
 
-  chartJSPromise = new Promise((resolve, reject) => {
-    if (window.Chart) {
-      chartJSLoaded = true;
-      resolve(window.Chart);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-    script.async = true;
-
-    script.onload = () => {
-      chartJSLoaded = true;
-      resolve(window.Chart);
-    };
-
-    script.onerror = () => {
-      chartJSPromise = null; // Allow retry
-      reject(new Error('Failed to load Chart.js'));
-    };
-
-    document.head.appendChild(script);
-  });
-
-  return chartJSPromise;
-};
-
-class EnergySchedulerCard extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-
-    // Internal state
-    this._hass = null;
-    this._config = null;
-    this._rendered = false;
-    this._dataLoaded = false;
-    this._loadingData = false;
-    this._initAttempts = 0;
-    this._maxInitAttempts = 20; // Max attempts to wait for connection
-    this._initRetryTimer = null;
-
-    // Data state
-    this._data = null;
-    this._schedule = {};
-    this._integrationConfig = null;
-
-    // UI state
-    this._chartInstance = null;
-    this._chartHoursData = [];
-    this._refreshInterval = null;
-    this._resizeObserver = null;
-
-    // Modal state
-    this._modalDate = null;
-    this._modalHour = null;
-
-    log('Constructor called');
+  .card-content {
+    padding: 16px;
   }
 
-  static getConfigElement() {
-    return document.createElement('energy-scheduler-card-editor');
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
   }
 
-  static getStubConfig() {
-    return {
-      title: 'Energy Scheduler',
-      show_chart: true,
-      show_schedule: true,
-      chart_height: 250
-    };
+  .card-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--primary-text-color);
   }
 
-  /**
-   * Home Assistant calls this setter whenever hass object updates.
-   * This is the MAIN reactive entry point - keep it simple and fast.
-   */
-  set hass(hass) {
-    const firstHass = !this._hass && hass;
-    const prevHass = this._hass;
-    this._hass = hass;
-
-    if (firstHass) {
-      log('First hass received', {
-        hasConnection: !!hass?.connection,
-        hasCallApi: typeof hass?.callApi === 'function',
-        connected: hass?.connected,
-        hasConfig: !!this._config
-      });
-    }
-
-    // If this is the first time we have hass and we have config, try to initialize
-    if (firstHass && this._config) {
-      this._tryInitialize();
-    }
-
-    // If we were waiting for connection and now have it, try again
-    if (!firstHass && this._config && !this._dataLoaded && !this._loadingData) {
-      const wasConnected = prevHass?.connected;
-      const nowConnected = hass?.connected;
-      if (!wasConnected && nowConnected) {
-        log('Connection became ready, retrying initialization');
-        this._tryInitialize();
-      }
-    }
-
-    // Update mode display if we have data
-    if (this._dataLoaded) {
-      this._updateCurrentMode();
-    }
+  .schedule-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
   }
 
-  get hass() {
-    return this._hass;
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
   }
 
-  /**
-   * Check if hass is ready for API calls
-   */
-  _isHassReady() {
-    if (!this._hass) return false;
-    if (typeof this._hass.callApi !== 'function') return false;
-    // Check connection state if available
-    if (this._hass.connected === false) return false;
-    return true;
+  .action-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--primary-text-color);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
   }
 
-  /**
-   * Lovelace calls this once when card is added/configured.
-   * CRITICAL: Must NOT throw errors - causes "Configuration Error" in UI.
-   */
-  setConfig(config) {
-    log('setConfig called', { hasHass: !!this._hass, config });
-
-    try {
-      // Store config with defaults
-      this._config = {
-        title: config?.title || 'Energy Scheduler',
-        show_chart: config?.show_chart !== false,
-        show_schedule: config?.show_schedule !== false,
-        chart_height: config?.chart_height || 250,
-        ...(config || {})
-      };
-
-      // Render the card structure immediately
-      this._renderCard();
-      this._rendered = true;
-
-      // If we already have hass, try to initialize data loading
-      if (this._hass) {
-        this._tryInitialize();
-      }
-    } catch (e) {
-      // Log error but don't throw - this prevents "Configuration Error"
-      logError('setConfig error', e);
-      this._renderError('Configuration error: ' + e.message);
-    }
+  .action-btn:hover {
+    background: var(--secondary-background-color, #f5f5f5);
   }
 
-  getCardSize() {
-    let size = 1;
-    if (this._config?.show_chart) size += 4;
-    if (this._config?.show_schedule) size += 6;
-    return size;
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
-  /**
-   * Called when card is added to DOM.
-   */
-  connectedCallback() {
-    log('connectedCallback', {
-      dataLoaded: this._dataLoaded,
-      hasConfig: !!this._config,
-      hasHass: !!this._hass
-    });
-
-    // Restart refresh interval if we were previously loaded
-    if (this._dataLoaded && !this._refreshInterval) {
-      this._startAutoRefresh();
-    }
-
-    // Recreate chart if needed (tab switch scenario)
-    if (this._dataLoaded && this._config?.show_chart && !this._chartInstance) {
-      this._setupChart();
-    }
-
-    // If we have config and hass but haven't loaded data, try again
-    if (this._config && this._hass && !this._dataLoaded && !this._loadingData) {
-      log('connectedCallback: Retrying initialization');
-      this._tryInitialize();
-    }
+  .action-btn.primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--text-primary-color, #fff);
   }
 
-  /**
-   * Called when card is removed from DOM.
-   */
-  disconnectedCallback() {
-    log('disconnectedCallback');
-    this._stopAutoRefresh();
-    this._destroyChart();
-    // Clear any pending init retry
-    if (this._initRetryTimer) {
-      clearTimeout(this._initRetryTimer);
-      this._initRetryTimer = null;
-    }
+  .action-btn.primary:hover {
+    opacity: 0.9;
   }
 
-  // ==================== Initialization ====================
-
-  /**
-   * Try to initialize the card - checks if hass is ready first
-   * Will retry with polling if connection isn't ready yet
-   */
-  _tryInitialize() {
-    // Prevent duplicate initialization
-    if (this._loadingData || this._dataLoaded) {
-      log('_tryInitialize: Already loading or loaded, skipping');
-      return;
-    }
-
-    // Clear any pending retry
-    if (this._initRetryTimer) {
-      clearTimeout(this._initRetryTimer);
-      this._initRetryTimer = null;
-    }
-
-    // Check if hass is ready
-    if (!this._isHassReady()) {
-      this._initAttempts++;
-      log(`_tryInitialize: Hass not ready, attempt ${this._initAttempts}/${this._maxInitAttempts}`, {
-        hasHass: !!this._hass,
-        hasCallApi: typeof this._hass?.callApi === 'function',
-        connected: this._hass?.connected
-      });
-
-      if (this._initAttempts < this._maxInitAttempts) {
-        // Exponential backoff: 100ms, 200ms, 400ms, ... up to 2s
-        const delay = Math.min(100 * Math.pow(1.5, this._initAttempts), 2000);
-        log(`_tryInitialize: Scheduling retry in ${delay}ms`);
-        this._initRetryTimer = setTimeout(() => {
-          this._initRetryTimer = null;
-          this._tryInitialize();
-        }, delay);
-        return;
-      } else {
-        logWarn('_tryInitialize: Max attempts reached, forcing initialization anyway');
-        // Fall through to try initialization anyway
-      }
-    }
-
-    log('_tryInitialize: Hass is ready, starting initialization');
-    this._initAttempts = 0;
-    this._initialize();
+  .chart-section {
+    margin-bottom: 16px;
   }
 
-  /**
-   * Initialize the card - load data from API
-   * Called when we have both config and hass is ready
-   */
-  async _initialize() {
-    // Prevent duplicate initialization
-    if (this._loadingData || this._dataLoaded) {
-      return;
-    }
-
-    this._loadingData = true;
-    this._showLoadingState();
-    log('_initialize: Starting data load');
-
-    try {
-      await this._loadData();
-      this._dataLoaded = true;
-      log('_initialize: Data loaded successfully');
-      this._updateUI();
-      this._startAutoRefresh();
-    } catch (error) {
-      logError('_initialize: Failed to load data', error);
-      this._showError(error.message || 'Failed to load data');
-      // Schedule retry after 5 seconds
-      setTimeout(() => {
-        this._loadingData = false;
-        this._initAttempts = 0; // Reset attempts for fresh retry
-        if (this._hass && this._config) {
-          this._tryInitialize();
-        }
-      }, 5000);
-    } finally {
-      this._loadingData = false;
-    }
+  .chart-container {
+    position: relative;
+    height: var(--chart-height);
+    width: 100%;
   }
 
-  /**
-   * Load data from API with retries
-   */
-  async _loadData() {
-    const MAX_RETRIES = 5;
-    const BASE_DELAY = 500;
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        log(`_loadData: Attempt ${attempt}/${MAX_RETRIES}`);
-
-        // Validate hass is ready
-        if (!this._hass) {
-          throw new Error('Home Assistant not available');
-        }
-
-        if (typeof this._hass.callApi !== 'function') {
-          throw new Error('Home Assistant API not ready (callApi not a function)');
-        }
-
-        // Check connection status
-        if (this._hass.connected === false) {
-          throw new Error('Home Assistant not connected');
-        }
-
-        log('_loadData: Making API calls...');
-
-        // Load config and data in parallel
-        const [configResult, dataResult] = await Promise.all([
-          this._hass.callApi('GET', 'hacs_energy_scheduler/config'),
-          this._hass.callApi('GET', 'hacs_energy_scheduler/data')
-        ]);
-
-        log('_loadData: API responses received', {
-          configResult: !!configResult,
-          dataResult: !!dataResult
-        });
-
-        if (!configResult || !dataResult) {
-          throw new Error('Invalid API response (null or undefined)');
-        }
-
-        this._integrationConfig = configResult;
-        this._data = dataResult;
-        this._schedule = dataResult?.schedule || {};
-
-        log('_loadData: Success!');
-        return;
-
-      } catch (error) {
-        const isLastAttempt = attempt === MAX_RETRIES;
-        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
-
-        logWarn(`_loadData: Attempt ${attempt} failed:`, error.message);
-
-        if (isLastAttempt) {
-          throw error;
-        }
-
-        log(`_loadData: Retrying in ${delay}ms...`);
-        await this._delay(delay);
-      }
-    }
+  #priceChart {
+    width: 100% !important;
+    height: 100% !important;
   }
 
-  _delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  .chart-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    color: var(--secondary-text-color);
+    font-size: 13px;
   }
 
-  // ==================== Lifecycle Helpers ====================
-
-  _startAutoRefresh() {
-    if (this._refreshInterval) return;
-    this._refreshInterval = setInterval(() => {
-      this._refreshData();
-    }, 60000);
+  .current-mode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--secondary-background-color);
+    border-radius: 6px;
+    font-size: 13px;
   }
 
-  _stopAutoRefresh() {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = null;
-    }
+  .current-mode .label {
+    color: var(--secondary-text-color);
   }
 
-  _destroyChart() {
-    if (this._resizeObserver) {
-      this._resizeObserver.disconnect();
-      this._resizeObserver = null;
-    }
-    if (this._chartInstance) {
-      this._chartInstance.destroy();
-      this._chartInstance = null;
-    }
+  .current-mode .value {
+    font-weight: 600;
+    color: var(--primary-color);
   }
 
-  async _refreshData() {
-    if (!this._hass || !this._dataLoaded) return;
-
-    try {
-      const data = await this._hass.callApi('GET', 'hacs_energy_scheduler/data');
-      this._data = data;
-      this._schedule = data?.schedule || {};
-      this._updateScheduleGrid();
-      this._updateChart();
-    } catch (error) {
-      console.error('Energy Scheduler: Refresh failed', error);
-    }
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
   }
 
-  // ==================== UI Rendering ====================
+  .loading-placeholder,
+  .error-placeholder {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    color: var(--secondary-text-color);
+    text-align: center;
+    gap: 12px;
+  }
 
-  /**
-   * Render the main card structure
-   * Called once from setConfig
-   */
-  _renderCard() {
-    if (!this.shadowRoot) return;
+  .loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--divider-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
 
-    this.shadowRoot.innerHTML = `
-      <style>${this._getStyles()}</style>
+  .error-placeholder .error-icon {
+    font-size: 32px;
+  }
+
+  .error-placeholder .error-message {
+    font-size: 13px;
+    max-width: 250px;
+  }
+
+  .retry-btn {
+    padding: 8px 16px;
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .retry-btn:hover {
+    opacity: 0.9;
+  }
+
+  .day-separator {
+    grid-column: 1 / -1;
+    padding: 6px 0;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--divider-color);
+    margin-top: 4px;
+  }
+
+  .day-separator:first-child {
+    margin-top: 0;
+  }
+
+  .hour-slot {
+    padding: 8px 4px;
+    border-radius: 6px;
+    background: var(--secondary-background-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    border: 2px solid transparent;
+    font-size: 11px;
+    position: relative;
+  }
+
+  .hour-slot:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .hour-slot.scheduled {
+    border-color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color), 0.1);
+  }
+
+  .hour-slot.scheduled.manual {
+    border-color: var(--warning-color, #FF9800);
+    background: rgba(255, 152, 0, 0.1);
+  }
+
+  .hour-slot.current {
+    border-color: var(--success-color, #4CAF50);
+    background: rgba(76, 175, 80, 0.1);
+  }
+
+  .hour-slot .lock-indicator {
+    font-size: 8px;
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+
+  .hour-slot .time {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .hour-slot .prices {
+    font-size: 9px;
+    color: var(--secondary-text-color);
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .hour-slot .prices .buy {
+    color: #2196F3;
+  }
+
+  .hour-slot .prices .sell {
+    color: #4CAF50;
+  }
+
+  .hour-slot .action {
+    font-size: 9px;
+    margin-top: 2px;
+    color: var(--primary-color);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Modal Dialog */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .modal-overlay.open {
+    display: flex;
+  }
+
+  .modal {
+    background: var(--card-background-color, #fff);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 360px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--secondary-text-color);
+    padding: 4px;
+    line-height: 1;
+  }
+
+  .price-info {
+    background: var(--secondary-background-color);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 12px;
+  }
+
+  .price-info .row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .price-info .row:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--primary-text-color);
+  }
+
+  .form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color);
+    font-size: 14px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+  }
+
+  .form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  .form-divider {
+    height: 1px;
+    background: var(--divider-color);
+    margin: 16px 0;
+  }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+  }
+
+  .toggle-row .toggle-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--primary-text-color);
+  }
+
+  .toggle-row .toggle-hint {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    margin-top: 2px;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--divider-color);
+    transition: 0.3s;
+    border-radius: 24px;
+  }
+
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .toggle-switch input:checked + .toggle-slider {
+    background-color: var(--primary-color);
+  }
+
+  .toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+  }
+
+  /* Range slider */
+  .range-group {
+    padding: 8px 0;
+  }
+
+  .range-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .range-header .range-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--primary-text-color);
+  }
+
+  .range-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-color);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  .range-input {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--divider-color);
+    outline: none;
+    -webkit-appearance: none;
+  }
+
+  .range-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--divider-color);
+  }
+
+  .btn {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover {
+    opacity: 0.85;
+  }
+
+  .btn-primary {
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+  }
+
+  .btn-secondary {
+    background: var(--secondary-background-color);
+    color: var(--primary-text-color);
+  }
+
+  .btn-danger {
+    background: var(--error-color, #F44336);
+    color: white;
+  }
+
+  .btn-warning {
+    background: var(--warning-color, #FF9800);
+    color: white;
+    flex: 0 0 auto;
+  }
+
+  .notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    border-radius: 6px;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .notification.show {
+    opacity: 1;
+  }
+
+  .notification.error {
+    background: var(--error-color, #F44336);
+  }
+
+  .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 20px;
+    color: var(--secondary-text-color);
+    font-size: 13px;
+  }
+`,el=h`
+  :host {
+    display: block;
+  }
+
+  .editor {
+    padding: 16px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.9em;
+    color: var(--primary-text-color);
+  }
+
+  .form-group input[type="text"],
+  .form-group input[type="number"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    font-size: 1em;
+    background: var(--card-background-color, white);
+    color: var(--primary-text-color);
+    box-sizing: border-box;
+  }
+
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .checkbox-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  .checkbox-row label {
+    margin-bottom: 0;
+    cursor: pointer;
+  }
+`;var il=Object.defineProperty,sl=Object.getOwnPropertyDescriptor,ol=(t,e,i,s)=>{for(var o,n=s>1?void 0:s?sl(e,i):e,r=t.length-1;r>=0;r--)(o=t[r])&&(n=(s?o(e,i,n):o(n))||n);return s&&n&&il(e,i,n),n};Kn.register(...Qa);const nl=(...t)=>console.log("[Energy Scheduler]",...t),rl=(...t)=>console.error("[Energy Scheduler]",...t);t.EnergySchedulerCard=class extends ht{constructor(){super(...arguments),this._schedule={},this._loading=!1,this._dataLoaded=!1,this._optimizing=!1,this._clearing=!1,this._modalOpen=!1,this._chartHoursData=[],this._initAttempts=0,this._maxInitAttempts=20}connectedCallback(){super.connectedCallback(),this.hass&&this._config&&!this._dataLoaded&&!this._loading&&this._tryInitialize(),this._dataLoaded&&!this._refreshInterval&&this._startAutoRefresh()}disconnectedCallback(){super.disconnectedCallback(),this._stopAutoRefresh(),this._destroyChart(),this._initRetryTimer&&(clearTimeout(this._initRetryTimer),this._initRetryTimer=void 0)}setConfig(t){this._config={title:(null==t?void 0:t.title)??"Energy Scheduler",show_chart:!1!==(null==t?void 0:t.show_chart),show_schedule:!1!==(null==t?void 0:t.show_schedule),chart_height:(null==t?void 0:t.chart_height)??250,...t},!this.hass||this._dataLoaded||this._loading||this._tryInitialize()}static getConfigElement(){return document.createElement("energy-scheduler-card-editor")}static getStubConfig(){return{type:"custom:energy-scheduler-card",title:"Energy Scheduler",show_chart:!0,show_schedule:!0,chart_height:250}}getCardSize(){var t,e;let i=1;return(null==(t=this._config)?void 0:t.show_chart)&&(i+=4),(null==(e=this._config)?void 0:e.show_schedule)&&(i+=6),i}updated(t){if(super.updated(t),t.has("hass")){!t.get("hass")&&this.hass&&this._config&&!this._dataLoaded&&!this._loading&&this._tryInitialize(),this._dataLoaded&&this._updateCurrentMode()}}_isHassReady(){return!!this.hass&&("function"==typeof this.hass.callApi&&!1!==this.hass.connected)}_tryInitialize(){if(!this._loading&&!this._dataLoaded){if(this._initRetryTimer&&(clearTimeout(this._initRetryTimer),this._initRetryTimer=void 0),!this._isHassReady()&&(this._initAttempts++,nl(`_tryInitialize: Hass not ready, attempt ${this._initAttempts}/${this._maxInitAttempts}`),this._initAttempts<this._maxInitAttempts)){const t=Math.min(100*Math.pow(1.5,this._initAttempts),2e3);return void(this._initRetryTimer=setTimeout(()=>{this._initRetryTimer=void 0,this._tryInitialize()},t))}nl("_tryInitialize: Starting initialization"),this._initAttempts=0,this._initialize()}}async _initialize(){var t;if(!this._loading&&!this._dataLoaded){this._loading=!0,this._error=void 0;try{await this._loadData(),this._dataLoaded=!0,nl("Data loaded successfully"),this._startAutoRefresh(),(null==(t=this._config)?void 0:t.show_chart)&&(await this.updateComplete,this._setupChart())}catch(e){rl("Failed to load data",e),this._error=e instanceof Error?e.message:"Failed to load data",setTimeout(()=>{this._loading=!1,this._initAttempts=0,this.hass&&this._config&&this._tryInitialize()},5e3)}finally{this._loading=!1}}}async _loadData(){if(!this.hass)throw new Error("Home Assistant not available");const[t,e]=await Promise.all([this.hass.callApi("GET","hacs_energy_scheduler/config"),this.hass.callApi("GET","hacs_energy_scheduler/data")]);this._integrationConfig=t,this._data=e,this._schedule=(null==e?void 0:e.schedule)||{}}_startAutoRefresh(){this._refreshInterval||(this._refreshInterval=setInterval(()=>this._refreshData(),6e4))}_stopAutoRefresh(){this._refreshInterval&&(clearInterval(this._refreshInterval),this._refreshInterval=void 0)}async _refreshData(){if(this.hass&&this._dataLoaded)try{const t=await this.hass.callApi("GET","hacs_energy_scheduler/data");this._data=t,this._schedule=(null==t?void 0:t.schedule)||{},this._updateChart()}catch(t){rl("Refresh failed",t)}}_formatDate(t){return`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`}_formatHour(t){return`${t.toString().padStart(2,"0")}:00`}_formatDateTime(t,e){const i=new Date(t);return`${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][i.getDay()]} ${i.getDate()}/${i.getMonth()+1} ${this._formatHour(e)}`}_formatShortDate(t){const e=new Date(t);return`${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][e.getDay()]} ${e.getDate()}/${e.getMonth()+1}`}_getAvailableHours(){var t,e;const i=new Date,s=i.getHours(),o=this._formatDate(i),n=(null==(t=this._data)?void 0:t.buy_prices)||[],r=(null==(e=this._data)?void 0:e.sell_prices)||[],a=[],l=new Set;return[...n,...r].forEach(t=>{var e,i;const h=`${t.date}-${t.hour}`;l.has(h)||t.date===o&&t.hour<s||t.date<o||(l.add(h),a.push({date:t.date,hour:t.hour,buyPrice:null==(e=n.find(e=>e.date===t.date&&e.hour===t.hour))?void 0:e.value,sellPrice:null==(i=r.find(e=>e.date===t.date&&e.hour===t.hour))?void 0:i.value}))}),a.sort((t,e)=>t.date!==e.date?t.date.localeCompare(e.date):t.hour-e.hour),a}_setupChart(){var t,e;const i=null==(t=this.shadowRoot)?void 0:t.getElementById("priceChart"),s=null==(e=this.shadowRoot)?void 0:e.getElementById("chartLoading");if(i){this._chartInstance&&(this._chartInstance.destroy(),this._chartInstance=void 0);try{s&&(s.style.display="none"),i.style.display="block";const t=i.getContext("2d");if(!t)return;const e=getComputedStyle(this).getPropertyValue("--primary-text-color")||"#333",o=getComputedStyle(this).getPropertyValue("--divider-color")||"#e0e0e0",n=getComputedStyle(this).getPropertyValue("--secondary-background-color")||"#f5f5f5",r=t.createLinearGradient(0,0,0,i.height||250);r.addColorStop(0,"rgba(33, 150, 243, 0.3)"),r.addColorStop(.5,"rgba(33, 150, 243, 0.1)"),r.addColorStop(1,"rgba(33, 150, 243, 0)");const a=t.createLinearGradient(0,0,0,i.height||250);a.addColorStop(0,"rgba(76, 175, 80, 0.3)"),a.addColorStop(.5,"rgba(76, 175, 80, 0.1)"),a.addColorStop(1,"rgba(76, 175, 80, 0)"),this._chartInstance=new Kn(t,{type:"line",data:{labels:[],datasets:[{label:"Buy",data:[],borderColor:"#2196F3",backgroundColor:r,borderWidth:2.5,pointRadius:0,pointHoverRadius:6,pointHoverBackgroundColor:"#2196F3",pointHoverBorderColor:"#fff",pointHoverBorderWidth:2,tension:.4,fill:!0},{label:"Sell",data:[],borderColor:"#4CAF50",backgroundColor:a,borderWidth:2.5,pointRadius:0,pointHoverRadius:6,pointHoverBackgroundColor:"#4CAF50",pointHoverBorderColor:"#fff",pointHoverBorderWidth:2,tension:.4,fill:!0}]},options:{responsive:!0,maintainAspectRatio:!1,interaction:{mode:"index",intersect:!1},hover:{mode:"index",intersect:!1},plugins:{legend:{display:!0,position:"top",align:"end",labels:{color:e,usePointStyle:!0,pointStyle:"circle",font:{size:11,weight:500},padding:16,boxWidth:8,boxHeight:8}},tooltip:{enabled:!0,backgroundColor:n,titleColor:e,bodyColor:e,borderColor:o,borderWidth:1,cornerRadius:8,padding:12,displayColors:!0,boxWidth:8,boxHeight:8,boxPadding:4,usePointStyle:!0,titleFont:{size:12,weight:600},bodyFont:{size:11},callbacks:{title:t=>{const e=t[0].dataIndex,i=this._chartHoursData;return i[e]?this._formatDateTime(i[e].date,i[e].hour):t[0].label},label:t=>{const e=t.parsed.y.toFixed(4);return` ${t.dataset.label}: ${e}`}}}},scales:{x:{display:!0,grid:{color:o,drawTicks:!1},border:{display:!1},ticks:{color:e,maxRotation:0,minRotation:0,font:{size:9},padding:8,maxTicksLimit:12}},y:{display:!0,grid:{color:o,drawTicks:!1},border:{display:!1},ticks:{color:e,callback:t=>t.toFixed(2),font:{size:10},padding:8}}},onClick:(t,e)=>{if(e.length>0){const t=e[0].index,i=this._chartHoursData;i[t]&&this._openModal(i[t].date,i[t].hour)}}}}),this._updateChart(),!this._resizeObserver&&i.parentElement&&(this._resizeObserver=new ResizeObserver(()=>{this._chartInstance&&null!==i.offsetParent&&this._chartInstance.resize()}),this._resizeObserver.observe(i.parentElement))}catch(o){rl("Failed to initialize Chart.js:",o),s&&(s.textContent="Failed to load chart")}}}_updateChart(){if(!this._data||!this._chartInstance)return;const t=this._getAvailableHours();this._chartHoursData=t;const e=new Date,i=this._formatDate(e),s=this._formatDate(new Date(e.getTime()+864e5)),o=t.map(t=>t.date===i?this._formatHour(t.hour):t.date===s?"T+"+this._formatHour(t.hour):this._formatShortDate(t.date).substring(0,3)+" "+this._formatHour(t.hour)),n=this._chartInstance;n.data.labels=o,n.data.datasets[0].data=t.map(t=>t.buyPrice??null),n.data.datasets[1].data=t.map(t=>t.sellPrice??null);const r=t.map(t=>{var e;return(null==(e=this._schedule[t.date])?void 0:e[t.hour.toString()])?5:0}),a=t.map(t=>{var e;return(null==(e=this._schedule[t.date])?void 0:e[t.hour.toString()])?"#2196F3":"transparent"}),l=t.map(t=>{var e;return(null==(e=this._schedule[t.date])?void 0:e[t.hour.toString()])?"#4CAF50":"transparent"}),h=n.data.datasets[0],c=n.data.datasets[1];h.pointRadius=r,c.pointRadius=r,h.pointBackgroundColor=a,c.pointBackgroundColor=l,n.update("none")}_destroyChart(){this._resizeObserver&&(this._resizeObserver.disconnect(),this._resizeObserver=void 0),this._chartInstance&&(this._chartInstance.destroy(),this._chartInstance=void 0)}async _saveSchedule(t,e,i,s,o,n,r,a){var l;try{await(null==(l=this.hass)?void 0:l.callApi("POST","hacs_energy_scheduler/schedule",{date:t,hour:e,action:i,soc_limit:s,soc_limit_type:o,full_hour:n,minutes:r,ev_charging:a})),await this._refreshData(),this._showNotification("Schedule saved")}catch(h){rl("Failed to save schedule:",h),this._showNotification("Failed to save","error")}}async _clearSchedule(t,e){var i;try{await(null==(i=this.hass)?void 0:i.callApi("DELETE",`hacs_energy_scheduler/schedule?date=${t}&hour=${e}`)),await this._refreshData(),this._showNotification("Schedule cleared")}catch(s){rl("Failed to clear schedule:",s),this._showNotification("Failed to clear","error")}}async _handleUnlock(){var t;if(this._modalDate&&void 0!==this._modalHour)try{const e=await(null==(t=this.hass)?void 0:t.callApi("POST","hacs_energy_scheduler/manual",{date:this._modalDate,hour:this._modalHour,manual:!1}));(null==e?void 0:e.success)?(this._showNotification("Schedule unlocked"),await this._refreshData(),this._closeModal()):this._showNotification("Failed to unlock","error")}catch(e){rl("Unlock error:",e),this._showNotification("Failed to unlock","error")}}async _runOptimization(){if(this.hass&&!this._optimizing){this._optimizing=!0;try{await this.hass.callService("hacs_energy_scheduler","run_optimization",{hours_ahead:24}),this._showNotification("Optimization complete!"),await this._refreshData()}catch(t){rl("Optimization failed:",t),this._showNotification("Optimization failed","error")}finally{this._optimizing=!1}}}async _clearAllSchedules(){if(this.hass&&!this._clearing&&confirm("Clear all scheduled tasks?")){this._clearing=!0;try{const t=new Date,e=this._formatDate(t),i=this._formatDate(new Date(t.getTime()+864e5));await this.hass.callService("hacs_energy_scheduler","clear_schedule",{date:e}),await this.hass.callService("hacs_energy_scheduler","clear_schedule",{date:i}),this._showNotification("All schedules cleared"),await this._refreshData()}catch(t){rl("Clear all failed:",t),this._showNotification("Failed to clear","error")}finally{this._clearing=!1}}}_updateCurrentMode(){var t,e;const i=null==(t=this._integrationConfig)?void 0:t.inverter_mode_entity;if(i&&this.hass){const t=this.hass.states[i],s=null==(e=this.shadowRoot)?void 0:e.getElementById("currentModeValue");t&&s&&(s.textContent=t.state)}}_showNotification(t,e="success"){var i;const s=null==(i=this.shadowRoot)?void 0:i.getElementById("notification");s&&(s.textContent=t,s.className=`notification show ${e}`,setTimeout(()=>{s.classList.remove("show")},2500))}_openModal(t,e){this._modalDate=t,this._modalHour=e,this._modalOpen=!0,this.updateComplete.then(()=>{this._setupModalValues()})}_setupModalValues(){var t,e,i,s,o,n,r,a,l,h,c;if(!this._modalDate||void 0===this._modalHour)return;const d=null==(t=this._schedule[this._modalDate])?void 0:t[this._modalHour.toString()],u=this._getAvailableHours().find(t=>t.date===this._modalDate&&t.hour===this._modalHour),p=null==(e=this.shadowRoot)?void 0:e.getElementById("modalTitle");p&&(p.textContent=this._formatDateTime(this._modalDate,this._modalHour));const g=null==(i=this.shadowRoot)?void 0:i.getElementById("modalBuyPrice"),f=null==(s=this.shadowRoot)?void 0:s.getElementById("modalSellPrice");g&&(g.textContent=(null==(o=null==u?void 0:u.buyPrice)?void 0:o.toFixed(4))??"N/A"),f&&(f.textContent=(null==(n=null==u?void 0:u.sellPrice)?void 0:n.toFixed(4))??"N/A");const m=null==(r=this.shadowRoot)?void 0:r.getElementById("actionSelect"),b=(null==(a=this._data)?void 0:a.inverter_modes)||[],x=(null==(l=this._data)?void 0:l.default_mode)||"";m&&(m.innerHTML='<option value="">-- Select --</option>',b.forEach(t=>{const e=(null==d?void 0:d.action)===t?"selected":"",i=t===x?" *":"";m.innerHTML+=`<option value="${t}" ${e}>${t}${i}</option>`})),d?(this._setFormValue("socLimitType",d.soc_limit_type||"max"),this._setFormValue("socLimit",(null==(h=d.soc_limit)?void 0:h.toString())||"100"),this._setFormText("socLimitValue",`${d.soc_limit||100}%`),this._setFormChecked("fullHour",d.full_hour||!1),this._setFormValue("minutes",(null==(c=d.minutes)?void 0:c.toString())||"30"),this._setFormText("minutesValue",`${d.minutes||30} min`),this._setFormChecked("evCharging",d.ev_charging||!1),this._setDisplay("modalClear","block"),this._setDisplay("modalUnlock",d.manual?"block":"none")):(this._setFormValue("socLimitType","max"),this._setFormValue("socLimit","100"),this._setFormText("socLimitValue","100%"),this._setFormChecked("fullHour",!0),this._setFormValue("minutes","30"),this._setFormText("minutesValue","30 min"),this._setFormChecked("evCharging",!1),this._setDisplay("modalClear","none"),this._setDisplay("modalUnlock","none")),this._toggleParameterFields((null==d?void 0:d.action)||"")}_setFormValue(t,e){var i;const s=null==(i=this.shadowRoot)?void 0:i.getElementById(t);s&&(s.value=e)}_setFormText(t,e){var i;const s=null==(i=this.shadowRoot)?void 0:i.getElementById(t);s&&(s.textContent=e)}_setFormChecked(t,e){var i;const s=null==(i=this.shadowRoot)?void 0:i.getElementById(t);s&&(s.checked=e)}_setDisplay(t,e){var i;const s=null==(i=this.shadowRoot)?void 0:i.getElementById(t);s&&(s.style.display=e)}_toggleParameterFields(t){var e,i,s,o,n,r,a;const l=(null==(e=this._data)?void 0:e.default_mode)||"",h=t&&t!==l&&""!==t,c=null==(i=this._integrationConfig)?void 0:i.ev_stop_condition,d=c&&(Array.isArray(c)&&c.length>0||"string"==typeof c&&c.length>0),u=!!(null==(s=this._integrationConfig)?void 0:s.soc_sensor);this._setDisplay("optionsSection",h?"block":"none"),this._setDisplay("evChargingGroup",d?"flex":"none");const p=null==(n=null==(o=this.shadowRoot)?void 0:o.getElementById("evCharging"))?void 0:n.checked,g=u&&!p;this._setDisplay("socDivider",d&&g?"block":"none"),this._setDisplay("socSection",g?"block":"none"),this._setDisplay("durationDivider","block"),this._setDisplay("fullHourGroup","flex");const f=null==(a=null==(r=this.shadowRoot)?void 0:r.getElementById("fullHour"))?void 0:a.checked;this._setDisplay("minutesGroup",f?"none":"block")}_closeModal(){this._modalOpen=!1,this._modalDate=void 0,this._modalHour=void 0}async _handleSave(){var t,e,i,s,o,n,r,a,l,h,c,d,u,p,g;const f=null==(e=null==(t=this.shadowRoot)?void 0:t.getElementById("actionSelect"))?void 0:e.value;if(!f||!this._modalDate||void 0===this._modalHour)return void this._showNotification("Select action","error");let m=null,b=null,x=!1,_=null,y=!1;if(f!==((null==(i=this._data)?void 0:i.default_mode)||"")){const t=null==(s=this._integrationConfig)?void 0:s.ev_stop_condition;t&&(Array.isArray(t)&&t.length>0||"string"==typeof t&&t.length>0)&&(y=(null==(n=null==(o=this.shadowRoot)?void 0:o.getElementById("evCharging"))?void 0:n.checked)||!1),!y&&(null==(r=this._integrationConfig)?void 0:r.soc_sensor)&&(m=parseInt((null==(l=null==(a=this.shadowRoot)?void 0:a.getElementById("socLimit"))?void 0:l.value)||"100"),b=(null==(c=null==(h=this.shadowRoot)?void 0:h.getElementById("socLimitType"))?void 0:c.value)||"max"),x=(null==(u=null==(d=this.shadowRoot)?void 0:d.getElementById("fullHour"))?void 0:u.checked)||!1,x||(_=parseInt((null==(g=null==(p=this.shadowRoot)?void 0:p.getElementById("minutes"))?void 0:g.value)||"30"))}await this._saveSchedule(this._modalDate,this._modalHour,f,m,b,x,_,y),this._closeModal()}async _handleClear(){this._modalDate&&void 0!==this._modalHour&&(await this._clearSchedule(this._modalDate,this._modalHour),this._closeModal())}render(){return this._config?U`
       <ha-card>
         <div class="card-content">
-          <div class="card-header">
-            <h2>⚡ ${this._config?.title || 'Energy Scheduler'}</h2>
-            <div class="header-actions">
-              <button class="optimize-btn" id="optimizeBtn" title="Run optimization">
-                <span class="icon">🔄</span>
-                <span class="text">Optimize</span>
-              </button>
-            </div>
-          </div>
-
-          ${this._config?.show_chart ? `
-            <div class="chart-section">
-              <div class="chart-container">
-                <div class="chart-loading" id="chartLoading">Loading chart...</div>
-                <canvas id="priceChart" style="display: none;"></canvas>
-              </div>
-            </div>
-          ` : ''}
-
-          ${this._config?.show_schedule ? `
-            <div class="schedule-section">
-              <div class="current-mode">
-                <span class="label">Mode:</span>
-                <span class="value" id="currentModeValue">--</span>
-              </div>
-              <div class="schedule-grid" id="scheduleGrid">
-                <div class="loading-placeholder">
-                  <div class="loading-spinner"></div>
-                  <span>Loading schedule...</span>
-                </div>
-              </div>
-            </div>
-          ` : ''}
+          ${this._renderHeader()}
+          ${this._loading&&!this._dataLoaded?this._renderLoading():X}
+          ${this._error?this._renderError():X}
+          ${this._dataLoaded?this._renderContent():X}
         </div>
-
-        ${this._getModalTemplate()}
-
+        ${this._renderModal()}
         <div class="notification" id="notification"></div>
       </ha-card>
-    `;
-
-    this._setupEventListeners();
-  }
-
-  /**
-   * Show loading state within the already rendered card
-   */
-  _showLoadingState() {
-    const grid = this.shadowRoot?.getElementById('scheduleGrid');
-    if (grid) {
-      grid.innerHTML = `
-        <div class="loading-placeholder">
-          <div class="loading-spinner"></div>
-          <span>Loading schedule...</span>
+    `:U`<ha-card>No configuration</ha-card>`}_renderHeader(){var t;return U`
+      <div class="card-header">
+        <h2>⚡ ${(null==(t=this._config)?void 0:t.title)||"Energy Scheduler"}</h2>
+      </div>
+    `}_renderLoading(){return U`
+      <div class="loading-placeholder">
+        <div class="loading-spinner"></div>
+        <span>Loading schedule...</span>
+      </div>
+    `}_renderError(){return U`
+      <div class="error-placeholder">
+        <div class="error-icon">⚠️</div>
+        <div class="error-message">${this._error}</div>
+        <button class="retry-btn" @click=${()=>{this._loading=!1,this._dataLoaded=!1,this._error=void 0,this._initialize()}}>Retry</button>
+      </div>
+    `}_renderContent(){var t,e;return U`
+      ${(null==(t=this._config)?void 0:t.show_chart)?this._renderChart():X}
+      ${(null==(e=this._config)?void 0:e.show_schedule)?this._renderSchedule():X}
+    `}_renderChart(){var t;const e=(null==(t=this._config)?void 0:t.chart_height)??250;return U`
+      <div class="chart-section">
+        <div class="chart-container" style="--chart-height: ${e}px">
+          <div class="chart-loading" id="chartLoading">Loading chart...</div>
+          <canvas id="priceChart" style="display: none;"></canvas>
         </div>
-      `;
-    }
-  }
-
-  /**
-   * Show error state within the already rendered card
-   */
-  _showError(message) {
-    const grid = this.shadowRoot?.getElementById('scheduleGrid');
-    if (grid) {
-      grid.innerHTML = `
-        <div class="error-placeholder">
-          <div class="error-icon">⚠️</div>
-          <div class="error-message">${message}</div>
-          <button class="retry-btn" id="retryBtn">Retry</button>
+      </div>
+    `}_renderSchedule(){const t=this._getAvailableHours(),e=new Date,i=this._formatDate(e),s=this._formatDate(new Date(e.getTime()+864e5));let o=null;return U`
+      <div class="schedule-section">
+        <div class="schedule-toolbar">
+          <div class="current-mode">
+            <span class="label">Mode:</span>
+            <span class="value" id="currentModeValue">--</span>
+          </div>
+          <div class="toolbar-actions">
+            <button
+              class="action-btn"
+              @click=${this._clearAllSchedules}
+              ?disabled=${this._clearing||this._optimizing}
+            >
+              ${this._clearing?"Clearing...":"Clear"}
+            </button>
+            <button
+              class="action-btn primary"
+              @click=${this._runOptimization}
+              ?disabled=${this._optimizing||this._clearing}
+            >
+              ${this._optimizing?"Running...":"Optimize"}
+            </button>
+          </div>
         </div>
-      `;
-
-      this.shadowRoot.getElementById('retryBtn')?.addEventListener('click', () => {
-        this._loadingData = false;
-        this._dataLoaded = false;
-        this._initialize();
-      });
-    }
-  }
-
-  /**
-   * Render a complete error card (for critical errors)
-   */
-  _renderError(message) {
-    if (!this.shadowRoot) return;
-
-    this.shadowRoot.innerHTML = `
-      <style>
-        ha-card {
-          padding: 16px;
-        }
-        .error-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 24px 16px;
-          text-align: center;
-        }
-        .error-icon {
-          font-size: 32px;
-          margin-bottom: 12px;
-        }
-        .error-title {
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--primary-text-color);
-          margin-bottom: 8px;
-        }
-        .error-message {
-          font-size: 12px;
-          color: var(--secondary-text-color);
-        }
-      </style>
-      <ha-card>
-        <div class="error-state">
-          <div class="error-icon">⚠️</div>
-          <div class="error-title">⚡ ${this._config?.title || 'Energy Scheduler'}</div>
-          <div class="error-message">${message || 'Failed to load'}</div>
+        <div class="schedule-grid">
+          ${0===t.length?U`<div class="empty-state">No price data available</div>`:t.map(t=>{var e;let n=X;if(t.date!==o){o=t.date;const e=t.date===i,r=t.date===s;let a=this._formatShortDate(t.date);e&&(a="Today"),r&&(a="Tomorrow"),n=U`<div class="day-separator">${a}</div>`}const r=null==(e=this._schedule[t.date])?void 0:e[t.hour.toString()],a=!!r,l=!0===(null==r?void 0:r.manual),h=(null==r?void 0:r.ev_charging)?"🚗 ":"",c=l?U`<span class="lock-indicator">🔒</span>`:X;return U`
+                  ${n}
+                  <div
+                    class="hour-slot ${a?"scheduled":""} ${l?"manual":""}"
+                    @click=${()=>this._openModal(t.date,t.hour)}
+                  >
+                    ${c}
+                    <div class="time">${this._formatHour(t.hour)}</div>
+                    <div class="prices">
+                      ${void 0!==t.buyPrice?U`<span class="buy">${t.buyPrice.toFixed(2)}</span>`:X}
+                      ${void 0!==t.sellPrice?U`<span class="sell">${t.sellPrice.toFixed(2)}</span>`:X}
+                    </div>
+                    ${a?U`<div class="action">${h}${r.action}</div>`:X}
+                  </div>
+                `})}
         </div>
-      </ha-card>
-    `;
-  }
-
-  /**
-   * Update all UI components after data is loaded
-   */
-  _updateUI() {
-    this._updateScheduleGrid();
-    this._updateCurrentMode();
-
-    if (this._config?.show_chart) {
-      this._setupChart();
-    }
-  }
-
-  // ==================== Date/Time Formatters ====================
-
-  _formatDate(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  _formatHour(hour) {
-    return `${hour.toString().padStart(2, '0')}:00`;
-  }
-
-  _formatDateTime(date, hour) {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const d = new Date(date);
-    return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} ${this._formatHour(hour)}`;
-  }
-
-  _formatShortDate(date) {
-    const d = new Date(date);
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
-  }
-
-  async _saveSchedule(date, hour, action, socLimit, socLimitType, fullHour, minutes, evCharging) {
-    try {
-      await this._hass.callApi('POST', 'hacs_energy_scheduler/schedule', {
-        date,
-        hour: parseInt(hour),
-        action,
-        soc_limit: socLimit,
-        soc_limit_type: socLimitType,
-        full_hour: fullHour,
-        minutes: minutes,
-        ev_charging: evCharging
-      });
-      await this._refreshData();
-      this._showNotification('Schedule saved');
-    } catch (error) {
-      console.error('Failed to save schedule:', error);
-      this._showNotification('Failed to save', 'error');
-    }
-  }
-
-  async _clearSchedule(date, hour) {
-    try {
-      let url = `hacs_energy_scheduler/schedule?date=${date}`;
-      if (hour !== undefined) {
-        url += `&hour=${hour}`;
-      }
-      await this._hass.callApi('DELETE', url);
-      await this._refreshData();
-      this._showNotification('Schedule cleared');
-    } catch (error) {
-      console.error('Failed to clear schedule:', error);
-      this._showNotification('Failed to clear', 'error');
-    }
-  }
-
-  _getStyles() {
-    return `
-      :host {
-        --chart-height: ${this._config?.chart_height || 250}px;
-      }
-
-      ha-card {
-        overflow: hidden;
-      }
-
-      .card-content {
-        padding: 16px;
-      }
-
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-
-      .card-header h2 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
-
-      .header-actions {
-        display: flex;
-        gap: 8px;
-      }
-
-      .optimize-btn {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 6px 12px;
-        border: none;
-        border-radius: 6px;
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .optimize-btn:hover {
-        opacity: 0.85;
-        transform: translateY(-1px);
-      }
-
-      .optimize-btn:active {
-        transform: translateY(0);
-      }
-
-      .optimize-btn.loading {
-        opacity: 0.7;
-        pointer-events: none;
-      }
-
-      .optimize-btn .spinner {
-        width: 12px;
-        height: 12px;
-        border: 2px solid transparent;
-        border-top-color: currentColor;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-      }
-
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-
-      .chart-section {
-        margin-bottom: 16px;
-      }
-
-      .chart-container {
-        position: relative;
-        height: var(--chart-height);
-        width: 100%;
-      }
-
-      #priceChart {
-        width: 100% !important;
-        height: 100% !important;
-      }
-
-      .chart-loading {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        color: var(--secondary-text-color);
-        font-size: 13px;
-      }
-
-      .current-mode {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background: var(--secondary-background-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        font-size: 13px;
-      }
-
-      .current-mode .label {
-        color: var(--secondary-text-color);
-      }
-
-      .current-mode .value {
-        font-weight: 600;
-        color: var(--primary-color);
-      }
-
-      .schedule-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-        gap: 6px;
-      }
-
-      .loading-placeholder,
-      .error-placeholder {
-        grid-column: 1 / -1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 32px 16px;
-        color: var(--secondary-text-color);
-        text-align: center;
-        gap: 12px;
-      }
-
-      .loading-spinner {
-        width: 24px;
-        height: 24px;
-        border: 3px solid var(--divider-color);
-        border-top-color: var(--primary-color);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-
-      .error-placeholder .error-icon {
-        font-size: 32px;
-      }
-
-      .error-placeholder .error-message {
-        font-size: 13px;
-        max-width: 250px;
-      }
-
-      .retry-btn {
-        padding: 8px 16px;
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-
-      .retry-btn:hover {
-        opacity: 0.9;
-      }
-
-      .day-separator {
-        grid-column: 1 / -1;
-        padding: 6px 0;
-        font-weight: 600;
-        font-size: 12px;
-        color: var(--primary-color);
-        border-bottom: 1px solid var(--divider-color);
-        margin-top: 4px;
-      }
-
-      .day-separator:first-child {
-        margin-top: 0;
-      }
-
-      .hour-slot {
-        padding: 8px 4px;
-        border-radius: 6px;
-        background: var(--secondary-background-color);
-        cursor: pointer;
-        transition: all 0.2s;
-        text-align: center;
-        border: 2px solid transparent;
-        font-size: 11px;
-        position: relative;
-      }
-
-      .hour-slot:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      .hour-slot.scheduled {
-        border-color: var(--primary-color);
-        background: rgba(var(--rgb-primary-color), 0.1);
-      }
-
-      .hour-slot.scheduled.manual {
-        border-color: var(--warning-color, #FF9800);
-        background: rgba(255, 152, 0, 0.1);
-      }
-
-      .hour-slot.current {
-        border-color: var(--success-color, #4CAF50);
-        background: rgba(76, 175, 80, 0.1);
-      }
-
-      .hour-slot .lock-indicator {
-        font-size: 8px;
-        position: absolute;
-        top: 2px;
-        right: 2px;
-      }
-
-      .hour-slot .time {
-        font-weight: 600;
-        font-size: 13px;
-        margin-bottom: 2px;
-      }
-
-      .hour-slot .prices {
-        font-size: 9px;
-        color: var(--secondary-text-color);
-        display: flex;
-        justify-content: center;
-        gap: 4px;
-      }
-
-      .hour-slot .prices .buy {
-        color: #2196F3;
-      }
-
-      .hour-slot .prices .sell {
-        color: #4CAF50;
-      }
-
-      .hour-slot .action {
-        font-size: 9px;
-        margin-top: 2px;
-        color: var(--primary-color);
-        font-weight: 500;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      /* Modal Dialog */
-      .modal-overlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 999;
-        justify-content: center;
-        align-items: center;
-      }
-
-      .modal-overlay.open {
-        display: flex;
-      }
-
-      .modal {
-        background: var(--card-background-color, #fff);
-        border-radius: 12px;
-        padding: 20px;
-        max-width: 360px;
-        width: 90%;
-        max-height: 80vh;
-        overflow-y: auto;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      }
-
-      .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-
-      .modal-title {
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0;
-      }
-
-      .modal-close {
-        background: none;
-        border: none;
-        font-size: 20px;
-        cursor: pointer;
-        color: var(--secondary-text-color);
-        padding: 4px;
-        line-height: 1;
-      }
-
-      .price-info {
-        background: var(--secondary-background-color);
-        padding: 10px;
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 12px;
-      }
-
-      .price-info .row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 4px;
-      }
-
-      .price-info .row:last-child {
-        margin-bottom: 0;
-      }
-
-      .form-group {
-        margin-bottom: 16px;
-      }
-
-      .form-group:last-child {
-        margin-bottom: 0;
-      }
-
-      .form-group label {
-        display: block;
-        margin-bottom: 6px;
-        font-weight: 500;
-        font-size: 13px;
-        color: var(--primary-text-color);
-      }
-
-      .form-group select {
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, #fff);
-        color: var(--primary-text-color);
-        font-size: 14px;
-        box-sizing: border-box;
-        transition: border-color 0.2s;
-      }
-
-      .form-group select:focus {
-        outline: none;
-        border-color: var(--primary-color);
-      }
-
-      .form-divider {
-        height: 1px;
-        background: var(--divider-color);
-        margin: 16px 0;
-      }
-
-      /* Toggle switch */
-      .toggle-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 0;
-      }
-
-      .toggle-row .toggle-label {
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
-
-      .toggle-row .toggle-hint {
-        font-size: 11px;
-        color: var(--secondary-text-color);
-        margin-top: 2px;
-      }
-
-      .toggle-switch {
-        position: relative;
-        width: 44px;
-        height: 24px;
-        flex-shrink: 0;
-      }
-
-      .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-      }
-
-      .toggle-slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: var(--divider-color);
-        transition: 0.3s;
-        border-radius: 24px;
-      }
-
-      .toggle-slider:before {
-        position: absolute;
-        content: "";
-        height: 18px;
-        width: 18px;
-        left: 3px;
-        bottom: 3px;
-        background-color: white;
-        transition: 0.3s;
-        border-radius: 50%;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-      }
-
-      .toggle-switch input:checked + .toggle-slider {
-        background-color: var(--primary-color);
-      }
-
-      .toggle-switch input:checked + .toggle-slider:before {
-        transform: translateX(20px);
-      }
-
-      /* Range slider */
-      .range-group {
-        padding: 8px 0;
-      }
-
-      .range-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-
-      .range-header .range-label {
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
-
-      .range-value {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--primary-color);
-        min-width: 40px;
-        text-align: right;
-      }
-
-      .range-input {
-        width: 100%;
-        height: 4px;
-        border-radius: 2px;
-        background: var(--divider-color);
-        outline: none;
-        -webkit-appearance: none;
-      }
-
-      .range-input::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        cursor: pointer;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-      }
-
-      .modal-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid var(--divider-color);
-      }
-
-      .btn {
-        flex: 1;
-        padding: 10px 12px;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: opacity 0.2s;
-      }
-
-      .btn:hover {
-        opacity: 0.85;
-      }
-
-      .btn-primary {
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-      }
-
-      .btn-secondary {
-        background: var(--secondary-background-color);
-        color: var(--primary-text-color);
-      }
-
-      .btn-danger {
-        background: var(--error-color, #F44336);
-        color: white;
-      }
-
-      .btn-warning {
-        background: var(--warning-color, #FF9800);
-        color: white;
-        flex: 0 0 auto;
-      }
-
-      .notification {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 10px 20px;
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-        border-radius: 6px;
-        z-index: 1000;
-        opacity: 0;
-        transition: opacity 0.3s;
-        font-size: 13px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      }
-
-      .notification.show {
-        opacity: 1;
-      }
-
-      .notification.error {
-        background: var(--error-color, #F44336);
-      }
-
-      .empty-state {
-        grid-column: 1 / -1;
-        text-align: center;
-        padding: 20px;
-        color: var(--secondary-text-color);
-        font-size: 13px;
-      }
-    `;
-  }
-
-  _getModalTemplate() {
-    return `
-      <div class="modal-overlay" id="modalOverlay">
+      </div>
+    `}_renderModal(){return this._modalOpen?U`
+      <div class="modal-overlay ${this._modalOpen?"open":""}" @click=${t=>{t.target.classList.contains("modal-overlay")&&this._closeModal()}}>
         <div class="modal">
           <div class="modal-header">
             <h3 class="modal-title" id="modalTitle">Schedule</h3>
-            <button class="modal-close" id="modalClose">&times;</button>
+            <button class="modal-close" @click=${this._closeModal}>&times;</button>
           </div>
 
           <div class="price-info">
@@ -1241,7 +694,7 @@ class EnergySchedulerCard extends HTMLElement {
 
           <div class="form-group">
             <label for="actionSelect">Inverter Mode</label>
-            <select id="actionSelect">
+            <select id="actionSelect" @change=${t=>this._toggleParameterFields(t.target.value)}>
               <option value="">-- Select --</option>
             </select>
           </div>
@@ -1255,7 +708,7 @@ class EnergySchedulerCard extends HTMLElement {
                 <div class="toggle-hint">Stop when EV condition met</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" id="evCharging">
+                <input type="checkbox" id="evCharging" @change=${()=>{var t,e;return this._toggleParameterFields((null==(e=null==(t=this.shadowRoot)?void 0:t.getElementById("actionSelect"))?void 0:e.value)||"")}}>
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -1265,7 +718,7 @@ class EnergySchedulerCard extends HTMLElement {
             <div id="socSection" style="display: none;">
               <div class="form-group" id="socLimitGroup">
                 <label for="socLimitType">SOC Condition</label>
-                <select id="socLimitType">
+                <select id="socLimitType" @change=${t=>{const e="max"===t.target.value?"100":"30";this._setFormValue("socLimit",e),this._setFormText("socLimitValue",`${e}%`)}}>
                   <option value="max">Charge to SOC ≥</option>
                   <option value="min">Discharge to SOC ≤</option>
                 </select>
@@ -1275,7 +728,8 @@ class EnergySchedulerCard extends HTMLElement {
                   <span class="range-label">Target SOC</span>
                   <span class="range-value" id="socLimitValue">100%</span>
                 </div>
-                <input type="range" class="range-input" id="socLimit" min="0" max="100" value="100">
+                <input type="range" class="range-input" id="socLimit" min="0" max="100" value="100"
+                  @input=${t=>this._setFormText("socLimitValue",`${t.target.value}%`)}>
               </div>
             </div>
 
@@ -1287,7 +741,7 @@ class EnergySchedulerCard extends HTMLElement {
                 <div class="toggle-hint">Run for entire hour</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" id="fullHour">
+                <input type="checkbox" id="fullHour" @change=${t=>{this._setDisplay("minutesGroup",t.target.checked?"none":"block")}}>
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -1297,859 +751,65 @@ class EnergySchedulerCard extends HTMLElement {
                 <span class="range-label">Duration</span>
                 <span class="range-value" id="minutesValue">30 min</span>
               </div>
-              <input type="range" class="range-input" id="minutes" min="1" max="60" value="30">
+              <input type="range" class="range-input" id="minutes" min="1" max="60" value="30"
+                @input=${t=>this._setFormText("minutesValue",`${t.target.value} min`)}>
             </div>
           </div>
 
           <div class="modal-actions">
-            <button class="btn btn-secondary" id="modalCancel">Cancel</button>
-            <button class="btn btn-warning" id="modalUnlock" style="display: none;" title="Remove lock - allows optimization to overwrite">🔓 Unlock</button>
-            <button class="btn btn-danger" id="modalClear" style="display: none;">Clear</button>
-            <button class="btn btn-primary" id="modalSave">Save</button>
+            <button class="btn btn-secondary" @click=${this._closeModal}>Cancel</button>
+            <button class="btn btn-warning" id="modalUnlock" style="display: none;" @click=${this._handleUnlock} title="Remove lock - allows optimization to overwrite">🔓 Unlock</button>
+            <button class="btn btn-danger" id="modalClear" style="display: none;" @click=${this._handleClear}>Clear</button>
+            <button class="btn btn-primary" @click=${this._handleSave}>Save</button>
           </div>
         </div>
       </div>
-    `;
-  }
-
-  _setupEventListeners() {
-    const root = this.shadowRoot;
-    if (!root) return;
-
-    // Optimize button
-    const optimizeBtn = root.getElementById('optimizeBtn');
-    if (optimizeBtn) {
-      optimizeBtn.addEventListener('click', () => this._runOptimization());
-    }
-
-    const modalClose = root.getElementById('modalClose');
-    const modalCancel = root.getElementById('modalCancel');
-    const modalOverlay = root.getElementById('modalOverlay');
-    const modalSave = root.getElementById('modalSave');
-    const modalClear = root.getElementById('modalClear');
-    const actionSelect = root.getElementById('actionSelect');
-    const socLimit = root.getElementById('socLimit');
-    const minutes = root.getElementById('minutes');
-    const fullHour = root.getElementById('fullHour');
-    const evCharging = root.getElementById('evCharging');
-
-    if (modalClose) modalClose.addEventListener('click', () => this._closeModal());
-    if (modalCancel) modalCancel.addEventListener('click', () => this._closeModal());
-    if (modalOverlay) {
-      modalOverlay.addEventListener('click', (e) => {
-        if (e.target.id === 'modalOverlay') this._closeModal();
-      });
-    }
-    if (modalSave) modalSave.addEventListener('click', () => this._handleSave());
-    if (modalClear) modalClear.addEventListener('click', () => this._handleClear());
-
-    const modalUnlock = root.getElementById('modalUnlock');
-    if (modalUnlock) modalUnlock.addEventListener('click', () => this._handleUnlock());
-
-    if (actionSelect) {
-      actionSelect.addEventListener('change', (e) => {
-        this._toggleParameterFields(e.target.value);
-      });
-    }
-
-    if (socLimit) {
-      socLimit.addEventListener('input', (e) => {
-        root.getElementById('socLimitValue').textContent = `${e.target.value}%`;
-      });
-    }
-
-    const socLimitType = root.getElementById('socLimitType');
-    if (socLimitType) {
-      socLimitType.addEventListener('change', (e) => {
-        const defaultValue = e.target.value === 'max' ? 100 : 30;
-        root.getElementById('socLimit').value = defaultValue;
-        root.getElementById('socLimitValue').textContent = `${defaultValue}%`;
-      });
-    }
-
-    if (minutes) {
-      minutes.addEventListener('input', (e) => {
-        root.getElementById('minutesValue').textContent = `${e.target.value} min`;
-      });
-    }
-
-    if (fullHour) {
-      fullHour.addEventListener('change', (e) => {
-        const minutesGroup = root.getElementById('minutesGroup');
-        if (minutesGroup) {
-          minutesGroup.style.display = e.target.checked ? 'none' : 'block';
-        }
-      });
-    }
-
-    if (evCharging) {
-      evCharging.addEventListener('change', (e) => {
-        // When EV charging is checked, hide SOC section (use EV condition instead)
-        const socSection = root.getElementById('socSection');
-        if (socSection) {
-          socSection.style.display = e.target.checked ? 'none' : 'block';
-        }
-      });
-    }
-  }
-
-  async _setupChart() {
-    const canvas = this.shadowRoot?.getElementById('priceChart');
-    const chartLoading = this.shadowRoot?.getElementById('chartLoading');
-    if (!canvas) return;
-
-    // Destroy existing chart instance before creating a new one
-    if (this._chartInstance) {
-      this._chartInstance.destroy();
-      this._chartInstance = null;
-    }
-
-    try {
-      await loadChartJS();
-
-      // Hide loading, show canvas
-      if (chartLoading) chartLoading.style.display = 'none';
-      canvas.style.display = 'block';
-
-      const ctx = canvas.getContext('2d');
-      const textColor = getComputedStyle(this).getPropertyValue('--primary-text-color') || '#333';
-      const gridColor = getComputedStyle(this).getPropertyValue('--divider-color') || '#e0e0e0';
-
-      this._chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [
-            {
-              label: 'Buy',
-              data: [],
-              borderColor: '#2196F3',
-              backgroundColor: 'rgba(33, 150, 243, 0.1)',
-              borderWidth: 2,
-              pointRadius: 3,
-              pointHoverRadius: 6,
-              pointBackgroundColor: '#2196F3',
-              pointHoverBackgroundColor: '#2196F3',
-              pointBorderColor: '#fff',
-              pointHoverBorderColor: '#fff',
-              pointBorderWidth: 1,
-              pointHoverBorderWidth: 2,
-              tension: 0.3,
-              fill: false
-            },
-            {
-              label: 'Sell',
-              data: [],
-              borderColor: '#4CAF50',
-              backgroundColor: 'rgba(76, 175, 80, 0.1)',
-              borderWidth: 2,
-              pointRadius: 3,
-              pointHoverRadius: 6,
-              pointBackgroundColor: '#4CAF50',
-              pointHoverBackgroundColor: '#4CAF50',
-              pointBorderColor: '#fff',
-              pointHoverBorderColor: '#fff',
-              pointBorderWidth: 1,
-              pointHoverBorderWidth: 2,
-              tension: 0.3,
-              fill: false
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: {
-            mode: 'index',
-            intersect: false
-          },
-          plugins: {
-            legend: {
-              display: true,
-              position: 'top',
-              labels: {
-                color: textColor,
-                usePointStyle: true,
-                pointStyle: 'circle',
-                padding: 12,
-                font: { size: 11 }
-              }
-            },
-            tooltip: {
-              enabled: true,
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-              titleColor: '#fff',
-              bodyColor: '#fff',
-              titleFont: { size: 12, weight: 'bold' },
-              bodyFont: { size: 11 },
-              padding: 10,
-              cornerRadius: 6,
-              displayColors: true,
-              callbacks: {
-                title: (context) => {
-                  const idx = context[0].dataIndex;
-                  const hours = this._chartHoursData || [];
-                  if (hours[idx]) {
-                    return this._formatDateTime(hours[idx].date, hours[idx].hour);
-                  }
-                  return context[0].label;
-                },
-                label: (context) => {
-                  const value = context.parsed.y;
-                  const label = context.dataset.label;
-                  return `${label}: ${value.toFixed(4)}`;
-                },
-                afterBody: (context) => {
-                  const idx = context[0].dataIndex;
-                  const hours = this._chartHoursData || [];
-                  if (hours[idx]) {
-                    const h = hours[idx];
-                    const schedule = this._schedule[h.date]?.[h.hour.toString()];
-                    if (schedule) {
-                      const evIcon = schedule.ev_charging ? '🚗 ' : '';
-                      return [`📅 ${evIcon}${schedule.action}`];
-                    }
-                  }
-                  return [];
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              display: true,
-              grid: { color: gridColor, drawBorder: false },
-              ticks: {
-                color: textColor,
-                maxRotation: 45,
-                minRotation: 45,
-                autoSkip: true,
-                maxTicksLimit: 8,
-                font: { size: 9 }
-              }
-            },
-            y: {
-              display: true,
-              grid: { color: gridColor, drawBorder: false },
-              ticks: {
-                color: textColor,
-                callback: (value) => value.toFixed(2),
-                font: { size: 10 }
-              },
-              beginAtZero: false
-            }
-          },
-          onClick: (event, elements) => {
-            if (elements.length > 0) {
-              const idx = elements[0].index;
-              const hours = this._chartHoursData || [];
-              if (hours[idx]) {
-                this._openModal(hours[idx].date, hours[idx].hour);
-              }
-            }
-          },
-          onHover: (event, elements) => {
-            const canvasEl = event.native?.target;
-            if (canvasEl) {
-              canvasEl.style.cursor = elements.length > 0 ? 'pointer' : 'default';
-            }
-          }
-        }
-      });
-
-      this._updateChart();
-
-      // Setup ResizeObserver to handle tab switches and visibility changes
-      if (!this._resizeObserver) {
-        this._resizeObserver = new ResizeObserver(() => {
-          if (this._chartInstance && canvas.offsetParent !== null) {
-            this._chartInstance.resize();
-          }
-        });
-        this._resizeObserver.observe(canvas.parentElement);
-      }
-    } catch (error) {
-      console.error('Failed to initialize Chart.js:', error);
-      if (chartLoading) {
-        chartLoading.textContent = 'Failed to load chart';
-      }
-    }
-  }
-
-  _getAvailableHours() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const today = this._formatDate(now);
-
-    const buyPrices = this._data?.buy_prices || [];
-    const sellPrices = this._data?.sell_prices || [];
-
-    const allHours = [];
-    const seenKeys = new Set();
-
-    [...buyPrices, ...sellPrices].forEach(p => {
-      const key = `${p.date}-${p.hour}`;
-      if (seenKeys.has(key)) return;
-
-      if (p.date === today && p.hour < currentHour) return;
-      if (p.date < today) return;
-
-      seenKeys.add(key);
-      allHours.push({
-        date: p.date,
-        hour: p.hour,
-        buyPrice: buyPrices.find(b => b.date === p.date && b.hour === p.hour)?.value,
-        sellPrice: sellPrices.find(s => s.date === p.date && s.hour === p.hour)?.value
-      });
-    });
-
-    allHours.sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return a.hour - b.hour;
-    });
-
-    return allHours;
-  }
-
-  _updateChart() {
-    if (!this._data || !this._chartInstance) return;
-
-    const hours = this._getAvailableHours();
-    this._chartHoursData = hours;
-
-    const labels = hours.map(h => {
-      const now = new Date();
-      const today = this._formatDate(now);
-      const tomorrow = this._formatDate(new Date(now.getTime() + 86400000));
-
-      if (h.date === today) return this._formatHour(h.hour);
-      if (h.date === tomorrow) return 'T+' + this._formatHour(h.hour);
-      return this._formatShortDate(h.date).substring(0, 3) + ' ' + this._formatHour(h.hour);
-    });
-
-    this._chartInstance.data.labels = labels;
-    this._chartInstance.data.datasets[0].data = hours.map(h => h.buyPrice);
-    this._chartInstance.data.datasets[1].data = hours.map(h => h.sellPrice);
-
-    const scheduledPoints = hours.map(h => {
-      const schedule = this._schedule[h.date]?.[h.hour.toString()];
-      return schedule ? 6 : 3;
-    });
-
-    this._chartInstance.data.datasets[0].pointRadius = scheduledPoints;
-    this._chartInstance.data.datasets[1].pointRadius = scheduledPoints;
-
-    this._chartInstance.update('none');
-  }
-
-  _updateScheduleGrid() {
-    const grid = this.shadowRoot?.getElementById('scheduleGrid');
-    if (!grid || !this._data) return;
-
-    const hours = this._getAvailableHours();
-
-    const now = new Date();
-    const currentHour = now.getHours();
-    const today = this._formatDate(now);
-
-    let html = '';
-    let currentDate = null;
-
-    hours.forEach(h => {
-      if (h.date !== currentDate) {
-        currentDate = h.date;
-        const isToday = h.date === today;
-        const isTomorrow = h.date === this._formatDate(new Date(now.getTime() + 86400000));
-        let dayLabel = this._formatShortDate(h.date);
-        if (isToday) dayLabel = 'Today';
-        if (isTomorrow) dayLabel = 'Tomorrow';
-
-        html += `<div class="day-separator">${dayLabel}</div>`;
-      }
-
-      const daySchedule = this._schedule[h.date] || {};
-      const schedule = daySchedule[h.hour.toString()];
-      const isScheduled = !!schedule;
-      const isManual = schedule?.manual === true;
-      const isCurrent = h.date === today && h.hour === currentHour;
-
-      let classes = 'hour-slot';
-      if (isScheduled) classes += ' scheduled';
-      if (isManual) classes += ' manual';
-      if (isCurrent) classes += ' current';
-
-      const evIndicator = schedule?.ev_charging ? '🚗 ' : '';
-      const lockIndicator = isManual ? '<span class="lock-indicator">🔒</span>' : '';
-
-      html += `
-        <div class="${classes}" data-date="${h.date}" data-hour="${h.hour}">
-          ${lockIndicator}
-          <div class="time">${this._formatHour(h.hour)}</div>
-          <div class="prices">
-            ${h.buyPrice !== undefined ? `<span class="buy">${h.buyPrice.toFixed(2)}</span>` : ''}
-            ${h.sellPrice !== undefined ? `<span class="sell">${h.sellPrice.toFixed(2)}</span>` : ''}
-          </div>
-          ${isScheduled ? `<div class="action">${evIndicator}${schedule.action}</div>` : ''}
+    `:X}},t.EnergySchedulerCard.styles=tl,ol([gt({attribute:!1})],t.EnergySchedulerCard.prototype,"hass",2),ol([ft()],t.EnergySchedulerCard.prototype,"_config",2),ol([ft()],t.EnergySchedulerCard.prototype,"_integrationConfig",2),ol([ft()],t.EnergySchedulerCard.prototype,"_data",2),ol([ft()],t.EnergySchedulerCard.prototype,"_schedule",2),ol([ft()],t.EnergySchedulerCard.prototype,"_loading",2),ol([ft()],t.EnergySchedulerCard.prototype,"_dataLoaded",2),ol([ft()],t.EnergySchedulerCard.prototype,"_error",2),ol([ft()],t.EnergySchedulerCard.prototype,"_optimizing",2),ol([ft()],t.EnergySchedulerCard.prototype,"_clearing",2),ol([ft()],t.EnergySchedulerCard.prototype,"_modalOpen",2),ol([ft()],t.EnergySchedulerCard.prototype,"_modalDate",2),ol([ft()],t.EnergySchedulerCard.prototype,"_modalHour",2),t.EnergySchedulerCard=ol([dt("energy-scheduler-card")],t.EnergySchedulerCard);var al=Object.defineProperty,ll=Object.getOwnPropertyDescriptor,hl=(t,e,i,s)=>{for(var o,n=s>1?void 0:s?ll(e,i):e,r=t.length-1;r>=0;r--)(o=t[r])&&(n=(s?o(e,i,n):o(n))||n);return s&&n&&al(e,i,n),n};t.EnergySchedulerCardEditor=class extends ht{setConfig(t){this._config=t}_valueChanged(t){if(!this._config)return;const e=t.target,i=e.id;let s=e.value;"checkbox"===e.type?s=e.checked:"number"===e.type&&(s=parseInt(e.value,10));const o={...this._config,[i]:s};this._config=o;const n=new CustomEvent("config-changed",{detail:{config:o},bubbles:!0,composed:!0});this.dispatchEvent(n)}render(){return this._config?U`
+      <div class="editor">
+        <div class="form-group">
+          <label for="title">Title</label>
+          <input
+            type="text"
+            id="title"
+            .value=${this._config.title??"Energy Scheduler"}
+            @change=${this._valueChanged}
+          />
         </div>
-      `;
-    });
 
-    if (html === '') {
-      html = '<div class="empty-state">No price data available</div>';
-    }
+        <div class="form-group">
+          <label for="chart_height">Chart Height (px)</label>
+          <input
+            type="number"
+            id="chart_height"
+            .value=${String(this._config.chart_height??250)}
+            min="100"
+            max="500"
+            @change=${this._valueChanged}
+          />
+        </div>
 
-    grid.innerHTML = html;
-
-    grid.querySelectorAll('.hour-slot').forEach(slot => {
-      slot.addEventListener('click', () => {
-        const date = slot.dataset.date;
-        const hour = parseInt(slot.dataset.hour);
-        this._openModal(date, hour);
-      });
-    });
-  }
-
-  _updateCurrentMode() {
-    const modeEntity = this._integrationConfig?.inverter_mode_entity;
-    if (modeEntity && this._hass) {
-      const state = this._hass.states[modeEntity];
-      const modeValue = this.shadowRoot?.getElementById('currentModeValue');
-      if (state && modeValue) {
-        modeValue.textContent = state.state;
-      }
-    }
-  }
-
-  _openModal(date, hour) {
-    const modal = this.shadowRoot?.getElementById('modalOverlay');
-    if (!modal) return;
-
-    const hourStr = hour.toString();
-    const daySchedule = this._schedule[date] || {};
-    const schedule = daySchedule[hourStr];
-
-    this.shadowRoot.getElementById('modalTitle').textContent =
-      this._formatDateTime(date, hour);
-
-    const hours = this._getAvailableHours();
-    const hourData = hours.find(h => h.date === date && h.hour === hour);
-
-    this.shadowRoot.getElementById('modalBuyPrice').textContent =
-      hourData?.buyPrice !== undefined ? hourData.buyPrice.toFixed(4) : 'N/A';
-    this.shadowRoot.getElementById('modalSellPrice').textContent =
-      hourData?.sellPrice !== undefined ? hourData.sellPrice.toFixed(4) : 'N/A';
-
-    const actionSelect = this.shadowRoot.getElementById('actionSelect');
-    const modes = this._data?.inverter_modes || [];
-    const defaultMode = this._data?.default_mode || '';
-
-    actionSelect.innerHTML = '<option value="">-- Select --</option>';
-    modes.forEach(mode => {
-      const selected = schedule?.action === mode ? 'selected' : '';
-      const isDefault = mode === defaultMode ? ' *' : '';
-      actionSelect.innerHTML += `<option value="${mode}" ${selected}>${mode}${isDefault}</option>`;
-    });
-
-    if (schedule) {
-      this.shadowRoot.getElementById('socLimitType').value = schedule.soc_limit_type || 'max';
-      this.shadowRoot.getElementById('socLimit').value = schedule.soc_limit || 100;
-      this.shadowRoot.getElementById('socLimitValue').textContent = `${schedule.soc_limit || 100}%`;
-      this.shadowRoot.getElementById('fullHour').checked = schedule.full_hour || false;
-      this.shadowRoot.getElementById('minutes').value = schedule.minutes || 30;
-      this.shadowRoot.getElementById('minutesValue').textContent = `${schedule.minutes || 30} min`;
-      this.shadowRoot.getElementById('evCharging').checked = schedule.ev_charging || false;
-      this.shadowRoot.getElementById('modalClear').style.display = 'block';
-      // Show unlock button only for manual entries
-      this.shadowRoot.getElementById('modalUnlock').style.display = schedule.manual ? 'block' : 'none';
-    } else {
-      this.shadowRoot.getElementById('socLimitType').value = 'max';
-      this.shadowRoot.getElementById('socLimit').value = 100;
-      this.shadowRoot.getElementById('socLimitValue').textContent = '100%';
-      this.shadowRoot.getElementById('fullHour').checked = true;
-      this.shadowRoot.getElementById('minutes').value = 30;
-      this.shadowRoot.getElementById('minutesValue').textContent = '30 min';
-      this.shadowRoot.getElementById('evCharging').checked = false;
-      this.shadowRoot.getElementById('modalClear').style.display = 'none';
-      this.shadowRoot.getElementById('modalUnlock').style.display = 'none';
-    }
-
-    this._toggleParameterFields(schedule?.action || '');
-
-    this._modalDate = date;
-    this._modalHour = hour;
-
-    modal.classList.add('open');
-  }
-
-  _closeModal() {
-    const modal = this.shadowRoot?.getElementById('modalOverlay');
-    if (modal) modal.classList.remove('open');
-  }
-
-  _toggleParameterFields(action) {
-    const defaultMode = this._data?.default_mode || '';
-    const isNonDefault = action && action !== defaultMode && action !== '';
-    const hasEvStopCondition = this._integrationConfig?.ev_stop_condition &&
-                                Array.isArray(this._integrationConfig.ev_stop_condition) &&
-                                this._integrationConfig.ev_stop_condition.length > 0;
-    const hasSocSensor = !!this._integrationConfig?.soc_sensor;
-
-    const optionsSection = this.shadowRoot?.getElementById('optionsSection');
-    const evChargingGroup = this.shadowRoot?.getElementById('evChargingGroup');
-    const socDivider = this.shadowRoot?.getElementById('socDivider');
-    const socSection = this.shadowRoot?.getElementById('socSection');
-    const fullHourGroup = this.shadowRoot?.getElementById('fullHourGroup');
-    const durationDivider = this.shadowRoot?.getElementById('durationDivider');
-    const minutesGroup = this.shadowRoot?.getElementById('minutesGroup');
-
-    // Show options section when action is non-default
-    if (optionsSection) {
-      optionsSection.style.display = isNonDefault ? 'block' : 'none';
-    }
-
-    // Show EV charging option only if EV stop condition is configured
-    if (evChargingGroup) {
-      evChargingGroup.style.display = hasEvStopCondition ? 'flex' : 'none';
-    }
-
-    // Check if EV charging is selected to hide SOC section
-    const evChargingChecked = this.shadowRoot?.getElementById('evCharging')?.checked;
-
-    // Show SOC section only if SOC sensor is configured and not using EV charging
-    const showSocSection = hasSocSensor && !evChargingChecked;
-
-    // Show divider between EV and SOC only if both are visible
-    if (socDivider) {
-      socDivider.style.display = hasEvStopCondition && showSocSection ? 'block' : 'none';
-    }
-    if (socSection) {
-      socSection.style.display = showSocSection ? 'block' : 'none';
-    }
-
-    // Show duration divider and full hour toggle
-    if (durationDivider) {
-      durationDivider.style.display = 'block';
-    }
-    if (fullHourGroup) {
-      fullHourGroup.style.display = 'flex';
-    }
-
-    // Handle full hour toggle state
-    const fullHourChecked = this.shadowRoot?.getElementById('fullHour')?.checked;
-    if (minutesGroup) {
-      minutesGroup.style.display = !fullHourChecked ? 'block' : 'none';
-    }
-  }
-
-  async _handleSave() {
-    const action = this.shadowRoot?.getElementById('actionSelect')?.value;
-
-    if (!action) {
-      this._showNotification('Select action', 'error');
-      return;
-    }
-
-    const defaultMode = this._data?.default_mode || '';
-    let socLimit = null;
-    let socLimitType = null;
-    let fullHour = false;
-    let minutes = null;
-    let evCharging = false;
-
-    if (action !== defaultMode) {
-      const hasEvStopCondition = this._integrationConfig?.ev_stop_condition &&
-                                  Array.isArray(this._integrationConfig.ev_stop_condition) &&
-                                  this._integrationConfig.ev_stop_condition.length > 0;
-      if (hasEvStopCondition) {
-        evCharging = this.shadowRoot.getElementById('evCharging')?.checked || false;
-      }
-      // Only set SOC limit if not using EV charging (EV uses its own stop condition)
-      if (!evCharging && this._integrationConfig?.soc_sensor) {
-        socLimit = parseInt(this.shadowRoot.getElementById('socLimit')?.value || '100');
-        socLimitType = this.shadowRoot.getElementById('socLimitType')?.value || 'max';
-      }
-      fullHour = this.shadowRoot.getElementById('fullHour')?.checked || false;
-      if (!fullHour) {
-        minutes = parseInt(this.shadowRoot.getElementById('minutes')?.value || '30');
-      }
-    }
-
-    await this._saveSchedule(
-      this._modalDate,
-      this._modalHour,
-      action,
-      socLimit,
-      socLimitType,
-      fullHour,
-      minutes,
-      evCharging
-    );
-
-    this._closeModal();
-  }
-
-  async _handleClear() {
-    await this._clearSchedule(this._modalDate, this._modalHour);
-    this._closeModal();
-  }
-
-  async _handleUnlock() {
-    try {
-      const response = await this._hass.callApi(
-        'POST',
-        'hacs_energy_scheduler/manual',
-        {
-          date: this._modalDate,
-          hour: this._modalHour,
-          manual: false
-        }
-      );
-
-      if (response.success) {
-        this._showNotification('Schedule unlocked');
-        await this._refreshData();
-        this._closeModal();
-      } else {
-        this._showNotification('Failed to unlock', 'error');
-      }
-    } catch (error) {
-      console.error('Unlock error:', error);
-      this._showNotification('Failed to unlock', 'error');
-    }
-  }
-
-  _showNotification(message, type = 'success') {
-    const notification = this.shadowRoot?.getElementById('notification');
-    if (!notification) return;
-
-    notification.textContent = message;
-    notification.className = `notification show ${type}`;
-
-    setTimeout(() => {
-      notification.classList.remove('show');
-    }, 2500);
-  }
-
-  async _runOptimization() {
-    const btn = this.shadowRoot?.getElementById('optimizeBtn');
-    if (!btn || btn.classList.contains('loading')) return;
-
-    // Set loading state
-    btn.classList.add('loading');
-    const iconSpan = btn.querySelector('.icon');
-    const textSpan = btn.querySelector('.text');
-    const originalIcon = iconSpan?.textContent;
-    const originalText = textSpan?.textContent;
-
-    if (iconSpan) iconSpan.innerHTML = '<div class="spinner"></div>';
-    if (textSpan) textSpan.textContent = 'Running...';
-
-    try {
-      await this._hass.callService('hacs_energy_scheduler', 'run_optimization', {
-        hours_ahead: 24
-      });
-
-      this._showNotification('Optimization complete!');
-
-      // Reload data to show new schedule
-      await this._refreshData();
-    } catch (error) {
-      console.error('Optimization failed:', error);
-      this._showNotification('Optimization failed', 'error');
-    } finally {
-      // Reset button state
-      btn.classList.remove('loading');
-      if (iconSpan) iconSpan.textContent = originalIcon;
-      if (textSpan) textSpan.textContent = originalText;
-    }
-  }
-}
-
-// Card Editor
-class EnergySchedulerCardEditor extends HTMLElement {
-  constructor() {
-    super();
-    try {
-      this.attachShadow({ mode: 'open' });
-    } catch (e) {
-      console.warn('Energy Scheduler Editor: Shadow DOM issue:', e.message);
-    }
-  }
-
-  setConfig(config) {
-    try {
-      this._config = config || {};
-      this._render();
-    } catch (e) {
-      console.error('Energy Scheduler Editor: setConfig error', e);
-    }
-  }
-
-  _render() {
-    if (!this.shadowRoot) return;
-
-    try {
-      this.shadowRoot.innerHTML = `
-        <style>
-          .editor {
-            padding: 16px;
-          }
-          .form-group {
-            margin-bottom: 12px;
-          }
-          .form-group label {
-            display: block;
-            margin-bottom: 4px;
-            font-weight: 500;
-            font-size: 14px;
-          }
-          .form-group input[type="text"],
-          .form-group input[type="number"] {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid var(--divider-color);
-            border-radius: 4px;
-            box-sizing: border-box;
-          }
-          .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
-        </style>
-        <div class="editor">
-          <div class="form-group">
-            <label>Title</label>
-            <input type="text" id="title" value="${this._config?.title || 'Energy Scheduler'}">
-          </div>
-          <div class="form-group">
-            <label>Chart Height (px)</label>
-            <input type="number" id="chart_height" value="${this._config?.chart_height || 250}" min="100" max="500">
-          </div>
-          <div class="form-group">
-            <div class="checkbox-row">
-              <input type="checkbox" id="show_chart" ${this._config?.show_chart !== false ? 'checked' : ''}>
-              <label for="show_chart">Show Chart</label>
-            </div>
-          </div>
-          <div class="form-group">
-            <div class="checkbox-row">
-              <input type="checkbox" id="show_schedule" ${this._config?.show_schedule !== false ? 'checked' : ''}>
-              <label for="show_schedule">Show Schedule Grid</label>
-            </div>
+        <div class="form-group">
+          <div class="checkbox-row">
+            <input
+              type="checkbox"
+              id="show_chart"
+              .checked=${!1!==this._config.show_chart}
+              @change=${this._valueChanged}
+            />
+            <label for="show_chart">Show Chart</label>
           </div>
         </div>
-      `;
 
-      this.shadowRoot.getElementById('title')?.addEventListener('change', (e) => {
-        this._updateConfig('title', e.target.value);
-      });
-      this.shadowRoot.getElementById('chart_height')?.addEventListener('change', (e) => {
-        this._updateConfig('chart_height', parseInt(e.target.value));
-      });
-      this.shadowRoot.getElementById('show_chart')?.addEventListener('change', (e) => {
-        this._updateConfig('show_chart', e.target.checked);
-      });
-      this.shadowRoot.getElementById('show_schedule')?.addEventListener('change', (e) => {
-        this._updateConfig('show_schedule', e.target.checked);
-      });
-    } catch (e) {
-      console.error('Energy Scheduler Editor: render error', e);
-    }
-  }
-
-  _updateConfig(key, value) {
-    this._config = { ...this._config, [key]: value };
-    const event = new CustomEvent('config-changed', {
-      detail: { config: this._config },
-      bubbles: true,
-      composed: true
-    });
-    this.dispatchEvent(event);
-  }
-}
-
-// Store classes globally so they survive iframe recreation
-window.EnergySchedulerCard = EnergySchedulerCard;
-window.EnergySchedulerCardEditor = EnergySchedulerCardEditor;
-
-const CARD_TYPE = 'energy-scheduler-card';
-const EDITOR_TYPE = 'energy-scheduler-card-editor';
-
-// Registration function that can be called multiple times safely
-function registerEnergySchedulerCard() {
-  try {
-    if (!customElements.get(CARD_TYPE)) {
-      customElements.define(CARD_TYPE, window.EnergySchedulerCard);
-      console.log(`%c[Energy Scheduler] Registered ${CARD_TYPE}`, 'color: #4caf50;');
-    }
-    if (!customElements.get(EDITOR_TYPE)) {
-      customElements.define(EDITOR_TYPE, window.EnergySchedulerCardEditor);
-      console.log(`%c[Energy Scheduler] Registered ${EDITOR_TYPE}`, 'color: #4caf50;');
-    }
-    return true;
-  } catch (e) {
-    // If registration fails with "already defined", that's actually OK
-    if (e.message.includes('already been defined')) {
-      console.log('%c[Energy Scheduler] Elements already defined (OK)', 'color: #2196f3;');
-      return true;
-    }
-    console.error('%c[Energy Scheduler] Registration error:', 'color: red;', e);
-    return false;
-  }
-}
-
-// Initial registration
-console.log('%c[Energy Scheduler] Starting element registration...', 'color: #ff9800;');
-registerEnergySchedulerCard();
-
-// Register with card picker
-window.customCards = window.customCards || [];
-if (!window.customCards.some(c => c.type === CARD_TYPE)) {
-  window.customCards.push({
-    type: CARD_TYPE,
-    name: 'Energy Scheduler Card',
-    description: 'Schedule energy actions based on electricity prices',
-    preview: true,
-    documentationURL: 'https://github.com/your-repo/hacs-energy-scheduler'
-  });
-  console.log('%c[Energy Scheduler] Added to customCards', 'color: #4caf50;');
-}
-
-// Log version
-console.info(
-  `%c ENERGY-SCHEDULER-CARD %c v${CARD_VERSION} %c READY `,
-  'color: white; background: #4caf50; font-weight: bold; border-radius: 3px 0 0 3px;',
-  'color: #4caf50; background: #e8f5e9; font-weight: bold;',
-  'color: white; background: #4caf50; border-radius: 0 3px 3px 0;'
-);
-
-window.__energySchedulerLoaded = true;
-const loadTime = Date.now() - (window.__energySchedulerLoadStart || Date.now());
-console.log(`%c[Energy Scheduler] File fully loaded in ${loadTime}ms`, 'background: #222; color: #bada55; font-size: 14px;');
-
-// Monitor for registry clearing and re-register if needed
-// This handles the case when HA frontend reloads and clears the registry
-let registryCheckInterval = setInterval(() => {
-  if (!customElements.get(CARD_TYPE) && window.EnergySchedulerCard) {
-    console.warn('%c[Energy Scheduler] Registry cleared, re-registering...', 'background: orange; color: black;');
-    if (registerEnergySchedulerCard()) {
-      console.log('%c[Energy Scheduler] Re-registration successful!', 'color: #4caf50; font-weight: bold;');
-    }
-  }
-}, 50);
-
-// Stop monitoring after 2 seconds (HA should be stable by then)
-setTimeout(() => {
-  clearInterval(registryCheckInterval);
-  registryCheckInterval = null;
-
-  const finalCheck = customElements.get(CARD_TYPE);
-  if (finalCheck) {
-    console.log('%c[Energy Scheduler] Final check: Element stable in registry ✓', 'color: #4caf50; font-weight: bold;');
-  } else {
-    console.error('%c[Energy Scheduler] Final check: Element NOT in registry!', 'background: red; color: white;');
-    // One last attempt
-    registerEnergySchedulerCard();
-  }
-}, 2000);
+        <div class="form-group">
+          <div class="checkbox-row">
+            <input
+              type="checkbox"
+              id="show_schedule"
+              .checked=${!1!==this._config.show_schedule}
+              @change=${this._valueChanged}
+            />
+            <label for="show_schedule">Show Schedule Grid</label>
+          </div>
+        </div>
+      </div>
+    `:U`<div>No configuration</div>`}},t.EnergySchedulerCardEditor.styles=el,hl([gt({attribute:!1})],t.EnergySchedulerCardEditor.prototype,"hass",2),hl([ft()],t.EnergySchedulerCardEditor.prototype,"_config",2),t.EnergySchedulerCardEditor=hl([dt("energy-scheduler-card-editor")],t.EnergySchedulerCardEditor);const cl="energy-scheduler-card",dl="energy-scheduler-card-editor";window.EnergySchedulerCard=t.EnergySchedulerCard,window.EnergySchedulerCardEditor=t.EnergySchedulerCardEditor,window.customCards=window.customCards||[],window.customCards.some(t=>t.type===cl)||window.customCards.push({type:cl,name:"Energy Scheduler Card",description:"Schedule energy actions based on electricity prices",preview:!0,documentationURL:"https://github.com/your-repo/hacs-energy-scheduler"}),console.info("%c ENERGY-SCHEDULER-CARD %c v2.0.0 %c","color: white; background: #4caf50; font-weight: bold; border-radius: 3px 0 0 3px;","color: #4caf50; background: #e8f5e9; font-weight: bold;","background: transparent;");let ul=setInterval(()=>{!customElements.get(cl)&&window.EnergySchedulerCard&&(console.warn("[Energy Scheduler] Registry cleared, re-registering..."),function(){try{return customElements.get(cl)||customElements.define(cl,t.EnergySchedulerCard),customElements.get(dl)||customElements.define(dl,t.EnergySchedulerCardEditor),!0}catch(e){return!!(e instanceof Error&&e.message.includes("already been defined"))||(console.error("[Energy Scheduler] Registration error:",e),!1)}}())},50);return setTimeout(()=>{ul&&(clearInterval(ul),ul=null)},2e3),Object.defineProperty(t,Symbol.toStringTag,{value:"Module"}),t}({});
