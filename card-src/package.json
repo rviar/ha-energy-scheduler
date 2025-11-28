@@ -1,0 +1,22 @@
+{
+  "name": "energy-scheduler-card",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "lit": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "home-assistant-js-websocket": "^9.1.0",
+    "terser": "^5.44.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10"
+  }
+}

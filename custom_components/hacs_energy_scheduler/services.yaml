@@ -89,3 +89,20 @@ apply_mode:
       example: "charge_battery"
       selector:
         text:
+
+run_optimization:
+  name: Run Optimization
+  description: Analyze energy prices and PV forecast to create an optimal charging/discharging schedule
+  fields:
+    hours_ahead:
+      name: Planning Horizon
+      description: Number of hours to plan ahead (12-48)
+      required: false
+      default: 24
+      example: 24
+      selector:
+        number:
+          min: 12
+          max: 48
+          mode: slider
+          unit_of_measurement: "hours"

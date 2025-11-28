@@ -39,6 +39,7 @@ class ScheduleStorageManager:
 
     def get_schedule(self, date: str | None = None) -> dict[str, dict[str, Any]]:
         """Get schedule for a specific date or all dates."""
+        _LOGGER.debug("get_schedule called with date=%s, _data=%s", date, self._data)
         if date is None:
             return self._data
         return self._data.get(date, {})
@@ -57,6 +58,7 @@ class ScheduleStorageManager:
         full_hour: bool = False,
         minutes: int | None = None,
         ev_charging: bool = False,
+        manual: bool = False,
     ) -> None:
         """Set schedule for a specific hour."""
         if date not in self._data:
@@ -69,6 +71,7 @@ class ScheduleStorageManager:
             "full_hour": full_hour,
             "minutes": minutes,
             "ev_charging": ev_charging,
+            "manual": manual,
         }
 
         # Remove None/False values (except action)
@@ -76,7 +79,7 @@ class ScheduleStorageManager:
 
         self._data[date][hour] = schedule_entry
         await self.async_save()
-        _LOGGER.info("Set schedule for %s hour %s: %s", date, hour, schedule_entry)
+        _LOGGER.info("Set schedule for %s hour %s: %s (storage_id=%s)", date, hour, schedule_entry, id(self))
 
     async def async_clear_hour_schedule(self, date: str, hour: str) -> None:
         """Clear schedule for a specific hour."""
@@ -87,12 +90,53 @@ class ScheduleStorageManager:
             await self.async_save()
             _LOGGER.info("Cleared schedule for %s hour %s", date, hour)
 
-    async def async_clear_date_schedule(self, date: str) -> None:
-        """Clear all schedules for a specific date."""
-        if date in self._data:
+    async def async_clear_date_schedule(self, date: str, preserve_manual: bool = False) -> None:
+        """Clear all schedules for a specific date.
+
+        Args:
+            date: The date to clear schedules for
+            preserve_manual: If True, keep entries with manual=True
+        """
+        if date not in self._data:
+            return
+
+        if preserve_manual:
+            # Keep only manual entries
+            manual_entries = {
+                hour: entry for hour, entry in self._data[date].items()
+                if entry.get("manual", False)
+            }
+            if manual_entries:
+                self._data[date] = manual_entries
+                _LOGGER.info("Cleared auto schedules for %s, preserved %d manual entries",
+                           date, len(manual_entries))
+            else:
+                del self._data[date]
+                _LOGGER.info("Cleared all schedules for %s (no manual entries)", date)
+        else:
             del self._data[date]
-            await self.async_save()
             _LOGGER.info("Cleared all schedules for %s", date)
+
+        await self.async_save()
+
+    def get_manual_hours(self, date: str) -> set[str]:
+        """Get set of hours with manual entries for a date."""
+        if date not in self._data:
+            return set()
+        return {
+            hour for hour, entry in self._data[date].items()
+            if entry.get("manual", False)
+        }
+
+    async def async_set_manual_flag(self, date: str, hour: str, manual: bool) -> None:
+        """Set or clear the manual flag for an hour."""
+        if date in self._data and hour in self._data[date]:
+            self._data[date][hour]["manual"] = manual
+            if not manual:
+                # Remove the key if False to save space
+                del self._data[date][hour]["manual"]
+            await self.async_save()
+            _LOGGER.info("Set manual=%s for %s hour %s", manual, date, hour)
 
     async def async_clear_all(self) -> None:
         """Clear all schedule data."""

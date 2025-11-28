@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
+    SERVICE_RUN_OPTIMIZATION,
     SERVICE_SET_SCHEDULE,
 )
 from .coordinator import EnergySchedulerCoordinator
@@ -62,6 +63,14 @@ CLEAR_SCHEDULE_SCHEMA = vol.Schema(
 APPLY_MODE_SCHEMA = vol.Schema(
     {
         vol.Required("mode"): cv.string,
+    }
+)
+
+RUN_OPTIMIZATION_SCHEMA = vol.Schema(
+    {
+        vol.Optional("hours_ahead", default=24): vol.All(
+            vol.Coerce(int), vol.Range(min=12, max=48)
+        ),
     }
 )
 
@@ -161,9 +170,12 @@ class CardStaticView(HomeAssistantView):
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Handle GET request for static files."""
+        _LOGGER.debug("Card JS requested: %s", filename)
+
         # Security: only allow specific files
         allowed_files = {"energy-scheduler-card.js"}
         if filename not in allowed_files:
+            _LOGGER.warning("Blocked request for non-allowed file: %s", filename)
             return web.Response(status=404)
 
         file_path = self._www_path / filename
@@ -178,10 +190,15 @@ class CardStaticView(HomeAssistantView):
 
             hass = request.app["hass"]
             content = await hass.async_add_executor_job(read_file)
+            _LOGGER.debug("Card JS served successfully, size: %d bytes", len(content))
             return web.Response(
                 text=content,
                 content_type="application/javascript",
-                headers={"Cache-Control": "no-cache"},
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                },
             )
         except Exception as err:
             _LOGGER.error("Error reading static file %s: %s", filename, err)
@@ -221,6 +238,17 @@ async def _async_register_services(
         mode = call.data["mode"]
         await coordinator.async_apply_mode_now(mode)
 
+    async def handle_run_optimization(call: ServiceCall) -> None:
+        """Handle the run_optimization service call."""
+        hours_ahead = call.data.get("hours_ahead", 24)
+        result = await coordinator.async_run_optimization(hours_ahead=hours_ahead)
+        _LOGGER.info(
+            "Optimization completed: %d charge, %d discharge, %d solar hours",
+            len(result.charge_hours),
+            len(result.discharge_hours),
+            len(result.solar_hours),
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SET_SCHEDULE, handle_set_schedule, schema=SET_SCHEDULE_SCHEMA
     )
@@ -229,6 +257,9 @@ async def _async_register_services(
     )
     hass.services.async_register(
         DOMAIN, SERVICE_APPLY_MODE, handle_apply_mode, schema=APPLY_MODE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_RUN_OPTIMIZATION, handle_run_optimization, schema=RUN_OPTIMIZATION_SCHEMA
     )
 
     _LOGGER.debug("Registered Energy Scheduler services")
@@ -276,12 +307,15 @@ async def _async_register_api(
                 full_hour = data.get("full_hour", False)
                 minutes = data.get("minutes")
                 ev_charging = data.get("ev_charging", False)
+                # Manual flag - default True for API calls (user changes)
+                # Can be explicitly set to False for programmatic changes
+                manual = data.get("manual", True)
 
                 if not all([date, hour, action]):
                     return self.json({"error": "Missing required fields"}, status_code=400)
 
                 await coordinator.async_set_schedule(
-                    date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
+                    date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging, manual
                 )
                 return self.json({"success": True})
             except Exception as err:
@@ -343,9 +377,35 @@ async def _async_register_api(
                 "ev_stop_condition": coordinator.ev_stop_condition,
             })
 
+    class EnergySchedulerManualFlagView(HomeAssistantView):
+        """API view for managing manual flag on schedule entries."""
+
+        url = "/api/hacs_energy_scheduler/manual"
+        name = "api:hacs_energy_scheduler:manual"
+        requires_auth = True
+
+        async def post(self, request: web.Request) -> web.Response:
+            """Handle POST request to set/clear manual flag."""
+            try:
+                data = await request.json()
+                date = data.get("date")
+                hour = str(data.get("hour"))
+                manual = data.get("manual", False)
+
+                if not all([date, hour]):
+                    return self.json({"error": "Missing required fields"}, status_code=400)
+
+                await coordinator.storage.async_set_manual_flag(date, hour, manual)
+                await coordinator.async_request_refresh()
+                return self.json({"success": True})
+            except Exception as err:
+                _LOGGER.error("Error setting manual flag: %s", err)
+                return self.json({"error": str(err)}, status_code=500)
+
     hass.http.register_view(EnergySchedulerDataView())
     hass.http.register_view(EnergySchedulerScheduleView())
     hass.http.register_view(EnergySchedulerApplyModeView())
     hass.http.register_view(EnergySchedulerConfigView())
+    hass.http.register_view(EnergySchedulerManualFlagView())
 
     _LOGGER.debug("Registered Energy Scheduler API views")
