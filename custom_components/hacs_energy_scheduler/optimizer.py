@@ -645,8 +645,39 @@ class EnergyOptimizer:
             current_usable = self.battery_capacity * (current_soc - self.battery_min_soc) / 100
             current_usable = max(0, current_usable)
 
-            # Total energy available for discharge (capped by usable capacity)
-            total_discharge_available = min(charge_energy + current_usable, usable_capacity)
+            # Find the next cheap charging period (next occurrence of charge hours)
+            # We need to reserve energy to survive until then
+            charge_hour_times = sorted([h["hour"] for h in result.charge_hours])
+            next_cheap_hour = min(charge_hour_times) if charge_hour_times else 2  # Default to 2 AM
+
+            # Calculate hours from latest possible discharge (evening peak ~19:00) to next cheap period
+            # Assume worst case: discharge at 19:00, need to survive until next_cheap_hour next day
+            # If next_cheap_hour is 2 AM, that's about 7 hours (19:00 -> 02:00)
+            hours_until_cheap = (24 - 19 + next_cheap_hour) if next_cheap_hour < 19 else (next_cheap_hour - 19)
+            energy_reserve_needed = hours_until_cheap * self.avg_consumption
+
+            # IMPORTANT: After discharge, battery will be at min_soc (empty usable capacity)
+            # So we need to keep enough energy in battery to survive until cheap period
+            # This means we can only discharge: available - reserve_needed
+            # But reserve must come from the battery AFTER discharge ends
+
+            # Energy that must stay in battery above min_soc to cover consumption until cheap period
+            # Since discharge will bring battery to min_soc, we need to NOT fully discharge
+            # Instead, limit discharge so that: remaining_after_discharge >= reserve_needed
+
+            _LOGGER.debug("Energy reserve calculation:")
+            _LOGGER.debug("  Next cheap hour: %d:00", next_cheap_hour)
+            _LOGGER.debug("  Hours until cheap (from evening): %d", hours_until_cheap)
+            _LOGGER.debug("  Energy reserve needed: %.1f kWh", energy_reserve_needed)
+
+            # Available energy = what we'll have after charging (charge_energy + current)
+            # But we must keep reserve_needed for consumption
+            total_energy_after_charge = min(charge_energy + current_usable, usable_capacity)
+            total_discharge_available = total_energy_after_charge - energy_reserve_needed
+            total_discharge_available = max(0, total_discharge_available)  # Can't be negative
+
+            _LOGGER.debug("  Total energy after charge: %.1f kWh", total_energy_after_charge)
+            _LOGGER.debug("  Available for discharge: %.1f kWh", total_discharge_available)
 
             # Use configured discharge power
             discharge_power = self.battery_max_discharge_power
@@ -696,6 +727,13 @@ class EnergyOptimizer:
 
             # Sort by profit (most profitable first) and limit to max_discharge_hours
             potential_discharge.sort(key=lambda x: x["profit"], reverse=True)
+
+            # Log all candidates for debugging
+            _LOGGER.debug("  All discharge candidates (sorted by profit):")
+            for i, cand in enumerate(potential_discharge[:10]):  # Show top 10
+                _LOGGER.debug("    %d. %s %02d:00 - sell: %.4f, profit: %.4f",
+                             i+1, cand["date"], cand["hour"], cand.get("value", 0), cand["profit"])
+
             result.discharge_hours = potential_discharge[:max_discharge_hours]
 
             _LOGGER.debug("  Selected %d discharge hours from %d candidates",

@@ -13,7 +13,6 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers import condition
 
 from .const import (
-    ACTION_CHARGE,
     CONF_AUTO_OPTIMIZE,
     CONF_DEFAULT_MODE,
     CONF_EV_STOP_CONDITION,
@@ -201,13 +200,16 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         sell_data = self._get_sensor_price_data(self.price_sell_sensor)
 
         inverter_modes = self._get_inverter_modes()
+        schedule = self._storage.get_schedule()
+
+        _LOGGER.debug("_async_fetch_data: schedule=%s, storage_id=%s", schedule, id(self._storage))
 
         return {
             "buy_prices": buy_data,
             "sell_prices": sell_data,
             "inverter_modes": inverter_modes,
             "default_mode": self.default_mode,
-            "schedule": self._storage.get_schedule(),
+            "schedule": schedule,
             "current_action": self._current_action,
         }
 
@@ -343,14 +345,8 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                         )
 
             if should_apply:
-                # Resolve ACTION_CHARGE to actual mode dynamically
-                resolved_action = action
-                if action == ACTION_CHARGE:
-                    resolved_action = self._optimizer.select_charge_mode()
-                    _LOGGER.debug("Resolved ACTION_CHARGE to mode: %s", resolved_action)
-
-                if self._current_action != resolved_action:
-                    await self._async_apply_mode(resolved_action)
+                if self._current_action != action:
+                    await self._async_apply_mode(action)
             elif should_revert and self._current_action != self.default_mode:
                 await self._async_apply_default_mode()
 
@@ -450,10 +446,11 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         full_hour: bool = False,
         minutes: int | None = None,
         ev_charging: bool = False,
+        manual: bool = False,
     ) -> None:
         """Set a schedule entry."""
         await self._storage.async_set_hour_schedule(
-            date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
+            date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging, manual
         )
         await self.async_request_refresh()
 
@@ -525,19 +522,35 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
 
         Uses ACTION_CHARGE for charge hours to enable dynamic mode selection.
         """
-        # Clear future schedule first
+        # Clear future schedule first, but preserve manual entries
         now = dt_util.now()
         current_date = now.strftime("%Y-%m-%d")
         tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
 
-        # Clear both today and tomorrow schedules
-        await self._storage.async_clear_date_schedule(current_date)
-        await self._storage.async_clear_date_schedule(tomorrow)
+        # Get manual hours before clearing (to skip them during optimization)
+        manual_hours_today = self._storage.get_manual_hours(current_date)
+        manual_hours_tomorrow = self._storage.get_manual_hours(tomorrow)
 
-        # Apply charge hours with ACTION_CHARGE (dynamic mode selection)
+        _LOGGER.debug("Manual hours to preserve - today: %s, tomorrow: %s",
+                     manual_hours_today, manual_hours_tomorrow)
+
+        # Clear both today and tomorrow schedules, preserving manual entries
+        await self._storage.async_clear_date_schedule(current_date, preserve_manual=True)
+        await self._storage.async_clear_date_schedule(tomorrow, preserve_manual=True)
+
+        # Apply charge hours with actual charge mode
+        # Select the appropriate charge mode based on current state
+        charge_mode = self._optimizer.select_charge_mode()
+
         for hour_data in result.charge_hours:
             date = hour_data.get("date")
             hour = str(hour_data.get("hour"))
+
+            # Skip if this hour has a manual entry
+            manual_hours = manual_hours_today if date == current_date else manual_hours_tomorrow
+            if hour in manual_hours:
+                _LOGGER.debug("Skipping charge hour %s %s:00 - manual entry exists", date, hour)
+                continue
 
             # Determine if this is EV charging
             ev_charging = self._optimizer.ev_enabled and self._optimizer._is_ev_connected()
@@ -545,12 +558,13 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             await self._storage.async_set_hour_schedule(
                 date=date,
                 hour=hour,
-                action=ACTION_CHARGE,  # Will be resolved dynamically
+                action=charge_mode,  # Use actual mode instead of placeholder
                 soc_limit=100 if not ev_charging else None,
                 soc_limit_type="max",
                 full_hour=True,
                 minutes=None,
                 ev_charging=ev_charging,
+                manual=False,  # Auto-generated
             )
 
         # Apply discharge hours with sell mode
@@ -559,6 +573,12 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             for hour_data in result.discharge_hours:
                 date = hour_data.get("date")
                 hour = str(hour_data.get("hour"))
+
+                # Skip if this hour has a manual entry
+                manual_hours = manual_hours_today if date == current_date else manual_hours_tomorrow
+                if hour in manual_hours:
+                    _LOGGER.debug("Skipping discharge hour %s %s:00 - manual entry exists", date, hour)
+                    continue
 
                 await self._storage.async_set_hour_schedule(
                     date=date,
@@ -569,6 +589,7 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                     full_hour=True,
                     minutes=None,
                     ev_charging=False,
+                    manual=False,  # Auto-generated
                 )
 
         # Apply solar-only hours
@@ -577,6 +598,12 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             for hour_data in result.solar_hours:
                 date = hour_data.get("date")
                 hour = str(hour_data.get("hour"))
+
+                # Skip if this hour has a manual entry
+                manual_hours = manual_hours_today if date == current_date else manual_hours_tomorrow
+                if hour in manual_hours:
+                    _LOGGER.debug("Skipping solar hour %s %s:00 - manual entry exists", date, hour)
+                    continue
 
                 # Skip if already scheduled as charge or discharge
                 existing = self._storage.get_hour_schedule(date, hour)
@@ -592,6 +619,7 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                     full_hour=True,
                     minutes=None,
                     ev_charging=False,
+                    manual=False,  # Auto-generated
                 )
 
         _LOGGER.info(

@@ -299,12 +299,15 @@ async def _async_register_api(
                 full_hour = data.get("full_hour", False)
                 minutes = data.get("minutes")
                 ev_charging = data.get("ev_charging", False)
+                # Manual flag - default True for API calls (user changes)
+                # Can be explicitly set to False for programmatic changes
+                manual = data.get("manual", True)
 
                 if not all([date, hour, action]):
                     return self.json({"error": "Missing required fields"}, status_code=400)
 
                 await coordinator.async_set_schedule(
-                    date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging
+                    date, hour, action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging, manual
                 )
                 return self.json({"success": True})
             except Exception as err:
@@ -366,9 +369,35 @@ async def _async_register_api(
                 "ev_stop_condition": coordinator.ev_stop_condition,
             })
 
+    class EnergySchedulerManualFlagView(HomeAssistantView):
+        """API view for managing manual flag on schedule entries."""
+
+        url = "/api/hacs_energy_scheduler/manual"
+        name = "api:hacs_energy_scheduler:manual"
+        requires_auth = True
+
+        async def post(self, request: web.Request) -> web.Response:
+            """Handle POST request to set/clear manual flag."""
+            try:
+                data = await request.json()
+                date = data.get("date")
+                hour = str(data.get("hour"))
+                manual = data.get("manual", False)
+
+                if not all([date, hour]):
+                    return self.json({"error": "Missing required fields"}, status_code=400)
+
+                await coordinator.storage.async_set_manual_flag(date, hour, manual)
+                await coordinator.async_request_refresh()
+                return self.json({"success": True})
+            except Exception as err:
+                _LOGGER.error("Error setting manual flag: %s", err)
+                return self.json({"error": str(err)}, status_code=500)
+
     hass.http.register_view(EnergySchedulerDataView())
     hass.http.register_view(EnergySchedulerScheduleView())
     hass.http.register_view(EnergySchedulerApplyModeView())
     hass.http.register_view(EnergySchedulerConfigView())
+    hass.http.register_view(EnergySchedulerManualFlagView())
 
     _LOGGER.debug("Registered Energy Scheduler API views")

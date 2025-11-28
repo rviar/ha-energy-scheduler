@@ -19,17 +19,37 @@ const loadChartJS = () => {
 };
 
 class EnergySchedulerCard extends HTMLElement {
+  // Card lifecycle states (simple state machine)
+  static STATE = {
+    CREATED: 'created',       // Constructor called
+    CONFIGURED: 'configured', // setConfig called
+    READY: 'ready',          // Both config and hass available, UI rendered
+    LOADED: 'loaded',        // Data loaded from API
+    ERROR: 'error'           // Error state
+  };
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+
+    // Core state
+    this._state = EnergySchedulerCard.STATE.CREATED;
     this._hass = null;
     this._config = null;
+
+    // Data state
     this._data = null;
     this._schedule = {};
+    this._integrationConfig = null;
+
+    // UI state
     this._chartInstance = null;
     this._dialogOpen = false;
-    this._initialized = false;
     this._refreshInterval = null;
+    this._resizeObserver = null;
+
+    // Pending operations (for preventing duplicate calls)
+    this._pendingDataLoad = null;
   }
 
   static getConfigElement() {
@@ -45,17 +65,37 @@ class EnergySchedulerCard extends HTMLElement {
     };
   }
 
+  /**
+   * Home Assistant calls this setter whenever hass object updates.
+   * Can be called many times per second during state changes.
+   */
   set hass(hass) {
+    const hadHass = !!this._hass;
     this._hass = hass;
-    if (!this._initialized && this._config) {
-      this._initialize();
-    } else if (this._initialized) {
+
+    // Log first time hass is set (useful for debugging)
+    if (!hadHass && hass) {
+      console.info('Energy Scheduler: hass available, state:', this._state);
+    }
+
+    // Trigger initialization flow if we have both config and hass
+    if (this._config && hass) {
+      this._ensureReady();
+    }
+
+    // Update mode display if already loaded
+    if (this._state === EnergySchedulerCard.STATE.LOADED) {
       this._updateCurrentMode();
     }
   }
 
+  /**
+   * Lovelace calls this once when card is added/configured.
+   * Must NOT throw errors - causes "Configuration Error" in UI.
+   */
   setConfig(config) {
-    // Accept empty config {} as valid, only reject null/undefined
+    console.info('Energy Scheduler: setConfig called, hasHass:', !!this._hass);
+
     this._config = {
       title: config?.title || 'Energy Scheduler',
       show_chart: config?.show_chart !== false,
@@ -64,36 +104,172 @@ class EnergySchedulerCard extends HTMLElement {
       ...(config || {})
     };
 
-    // Initialize if hass is already available
-    if (!this._initialized && this._hass) {
-      this._initialize();
-    } else if (this._initialized) {
-      this._render();
+    this._state = EnergySchedulerCard.STATE.CONFIGURED;
+
+    // Trigger initialization flow if we have both config and hass
+    if (this._hass) {
+      this._ensureReady();
     }
   }
 
   getCardSize() {
-    let size = 1; // Header
+    let size = 1;
     if (this._config?.show_chart) size += 4;
     if (this._config?.show_schedule) size += 6;
     return size;
   }
 
   connectedCallback() {
-    if (this._initialized && !this._refreshInterval) {
+    // Card added to DOM - restart refresh if was running
+    if (this._state === EnergySchedulerCard.STATE.LOADED && !this._refreshInterval) {
       this._startAutoRefresh();
     }
-    // Recreate chart when card becomes visible again (tab switch)
-    if (this._initialized && this._config?.show_chart && !this._chartInstance) {
+    // Recreate chart if needed (tab switch scenario)
+    if (this._state === EnergySchedulerCard.STATE.LOADED &&
+        this._config?.show_chart && !this._chartInstance) {
       this._setupChart();
     }
   }
 
   disconnectedCallback() {
+    // Card removed from DOM - cleanup
+    this._stopAutoRefresh();
+    this._destroyChart();
+  }
+
+  // ==================== State Machine ====================
+
+  /**
+   * Ensures card reaches READY state and then loads data.
+   * Safe to call multiple times - handles deduplication internally.
+   */
+  async _ensureReady() {
+    // Guard: must have both config and hass
+    if (!this._config || !this._hass) {
+      return;
+    }
+
+    // Already loaded - nothing to do
+    if (this._state === EnergySchedulerCard.STATE.LOADED) {
+      return;
+    }
+
+    // If we're already loading data, wait for that to complete
+    if (this._pendingDataLoad) {
+      return this._pendingDataLoad;
+    }
+
+    // Transition to READY: render UI
+    if (this._state === EnergySchedulerCard.STATE.CONFIGURED) {
+      console.info('Energy Scheduler: Rendering UI');
+      this._renderUI();
+      this._state = EnergySchedulerCard.STATE.READY;
+    }
+
+    // Transition to LOADED: fetch data
+    if (this._state === EnergySchedulerCard.STATE.READY) {
+      this._pendingDataLoad = this._loadAllData();
+      try {
+        await this._pendingDataLoad;
+        this._state = EnergySchedulerCard.STATE.LOADED;
+        this._startAutoRefresh();
+      } catch (error) {
+        console.error('Energy Scheduler: Failed to load data', error);
+        this._state = EnergySchedulerCard.STATE.ERROR;
+        // Schedule retry - only if we still have hass
+        setTimeout(() => {
+          if (this._state === EnergySchedulerCard.STATE.ERROR && this._hass) {
+            this._state = EnergySchedulerCard.STATE.READY;
+            this._ensureReady();
+          }
+        }, 5000);
+      } finally {
+        this._pendingDataLoad = null;
+      }
+    }
+  }
+
+  /**
+   * Loads all required data with retries.
+   * Returns a promise that resolves when data is loaded.
+   */
+  async _loadAllData() {
+    const MAX_RETRIES = 5;
+    const BASE_DELAY = 300;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Check hass is still available
+        if (!this._hass) {
+          throw new Error('hass not available');
+        }
+
+        console.info(`Energy Scheduler: Loading data (attempt ${attempt}/${MAX_RETRIES})`);
+
+        // Load config and data in parallel
+        const [configResult, dataResult] = await Promise.all([
+          this._fetchConfig(),
+          this._fetchData()
+        ]);
+
+        this._integrationConfig = configResult;
+        this._data = dataResult;
+        this._schedule = dataResult?.schedule || {};
+
+        // Update UI with loaded data
+        this._updateScheduleGrid();
+
+        // Setup chart if enabled
+        if (this._config?.show_chart) {
+          await this._setupChart();
+        }
+
+        console.info('Energy Scheduler: Data loaded successfully');
+        return;
+
+      } catch (error) {
+        const isLastAttempt = attempt === MAX_RETRIES;
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+
+        if (isLastAttempt) {
+          throw error;
+        }
+
+        console.warn(`Energy Scheduler: Load failed, retrying in ${delay}ms...`, error.message);
+        await this._delay(delay);
+      }
+    }
+  }
+
+  async _fetchConfig() {
+    return this._hass.callApi('GET', 'hacs_energy_scheduler/config');
+  }
+
+  async _fetchData() {
+    return this._hass.callApi('GET', 'hacs_energy_scheduler/data');
+  }
+
+  _delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // ==================== Lifecycle Helpers ====================
+
+  _startAutoRefresh() {
+    if (this._refreshInterval) return;
+    this._refreshInterval = setInterval(() => {
+      this._refreshData();
+    }, 60000);
+  }
+
+  _stopAutoRefresh() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = null;
     }
+  }
+
+  _destroyChart() {
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
@@ -104,8 +280,41 @@ class EnergySchedulerCard extends HTMLElement {
     }
   }
 
+  async _refreshData() {
+    if (!this._hass || this._state !== EnergySchedulerCard.STATE.LOADED) return;
+
+    try {
+      const data = await this._fetchData();
+      this._data = data;
+      this._schedule = data?.schedule || {};
+      this._updateScheduleGrid();
+      this._updateChart();
+    } catch (error) {
+      console.error('Energy Scheduler: Refresh failed', error);
+    }
+  }
+
+  // ==================== UI Rendering ====================
+
+  _renderUI() {
+    if (!this.shadowRoot) return;
+
+    const style = document.createElement('style');
+    style.textContent = this._getStyles();
+
+    const card = document.createElement('ha-card');
+    card.innerHTML = this._getTemplate();
+
+    this.shadowRoot.innerHTML = '';
+    this.shadowRoot.appendChild(style);
+    this.shadowRoot.appendChild(card);
+
+    this._setupEventListeners();
+  }
+
+  // ==================== Date/Time Formatters ====================
+
   _formatDate(date) {
-    // Use local timezone, not UTC
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -119,48 +328,13 @@ class EnergySchedulerCard extends HTMLElement {
   _formatDateTime(date, hour) {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const d = new Date(date);
-    const dayName = dayNames[d.getDay()];
-    const day = d.getDate();
-    const month = d.getMonth() + 1;
-    return `${dayName} ${day}/${month} ${this._formatHour(hour)}`;
+    return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} ${this._formatHour(hour)}`;
   }
 
   _formatShortDate(date) {
     const d = new Date(date);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
-  }
-
-  async _initialize() {
-    this._initialized = true;
-    this._render();
-    await this._loadIntegrationConfig();
-    await this._loadData();
-    if (this._config.show_chart) {
-      await this._setupChart();
-    }
-    this._startAutoRefresh();
-  }
-
-  async _loadIntegrationConfig() {
-    try {
-      const response = await this._hass.callApi('GET', 'hacs_energy_scheduler/config');
-      this._integrationConfig = response;
-    } catch (error) {
-      console.error('Failed to load integration config:', error);
-    }
-  }
-
-  async _loadData() {
-    try {
-      const response = await this._hass.callApi('GET', 'hacs_energy_scheduler/data');
-      this._data = response;
-      this._schedule = response.schedule || {};
-      this._updateChart();
-      this._updateScheduleList();
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    }
   }
 
   async _saveSchedule(date, hour, action, socLimit, socLimitType, fullHour, minutes, evCharging) {
@@ -175,7 +349,7 @@ class EnergySchedulerCard extends HTMLElement {
         minutes: minutes,
         ev_charging: evCharging
       });
-      await this._loadData();
+      await this._refreshData();
       this._showNotification('Schedule saved');
     } catch (error) {
       console.error('Failed to save schedule:', error);
@@ -190,33 +364,12 @@ class EnergySchedulerCard extends HTMLElement {
         url += `&hour=${hour}`;
       }
       await this._hass.callApi('DELETE', url);
-      await this._loadData();
+      await this._refreshData();
       this._showNotification('Schedule cleared');
     } catch (error) {
       console.error('Failed to clear schedule:', error);
       this._showNotification('Failed to clear', 'error');
     }
-  }
-
-  _startAutoRefresh() {
-    if (this._refreshInterval) return;
-    this._refreshInterval = setInterval(() => {
-      this._loadData();
-    }, 60000);
-  }
-
-  _render() {
-    const style = document.createElement('style');
-    style.textContent = this._getStyles();
-
-    const card = document.createElement('ha-card');
-    card.innerHTML = this._getTemplate();
-
-    this.shadowRoot.innerHTML = '';
-    this.shadowRoot.appendChild(style);
-    this.shadowRoot.appendChild(card);
-
-    this._setupEventListeners();
   }
 
   _getStyles() {
@@ -367,9 +520,25 @@ class EnergySchedulerCard extends HTMLElement {
         background: rgba(var(--rgb-primary-color), 0.1);
       }
 
+      .hour-slot.scheduled.manual {
+        border-color: var(--warning-color, #FF9800);
+        background: rgba(255, 152, 0, 0.1);
+      }
+
       .hour-slot.current {
         border-color: var(--success-color, #4CAF50);
         background: rgba(76, 175, 80, 0.1);
+      }
+
+      .hour-slot .lock-indicator {
+        font-size: 8px;
+        position: absolute;
+        top: 2px;
+        right: 2px;
+      }
+
+      .hour-slot {
+        position: relative;
       }
 
       .hour-slot .time {
@@ -662,6 +831,12 @@ class EnergySchedulerCard extends HTMLElement {
         color: white;
       }
 
+      .btn-warning {
+        background: var(--warning-color, #FF9800);
+        color: white;
+        flex: 0 0 auto;
+      }
+
       .notification {
         position: fixed;
         bottom: 20px;
@@ -818,6 +993,7 @@ class EnergySchedulerCard extends HTMLElement {
 
           <div class="modal-actions">
             <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+            <button class="btn btn-warning" id="modalUnlock" style="display: none;" title="Remove lock - allows optimization to overwrite">🔓 Unlock</button>
             <button class="btn btn-danger" id="modalClear" style="display: none;">Clear</button>
             <button class="btn btn-primary" id="modalSave">Save</button>
           </div>
@@ -857,6 +1033,9 @@ class EnergySchedulerCard extends HTMLElement {
     }
     if (modalSave) modalSave.addEventListener('click', () => this._handleSave());
     if (modalClear) modalClear.addEventListener('click', () => this._handleClear());
+
+    const modalUnlock = root.getElementById('modalUnlock');
+    if (modalUnlock) modalUnlock.addEventListener('click', () => this._handleUnlock());
 
     if (actionSelect) {
       actionSelect.addEventListener('change', (e) => {
@@ -1146,6 +1325,11 @@ class EnergySchedulerCard extends HTMLElement {
     this._chartInstance.update('none');
   }
 
+  // Alias for backwards compatibility
+  _updateScheduleGrid() {
+    this._updateScheduleList();
+  }
+
   _updateScheduleList() {
     const grid = this.shadowRoot.getElementById('scheduleGrid');
     if (!grid) return;
@@ -1174,16 +1358,20 @@ class EnergySchedulerCard extends HTMLElement {
       const daySchedule = this._schedule[h.date] || {};
       const schedule = daySchedule[h.hour.toString()];
       const isScheduled = !!schedule;
+      const isManual = schedule?.manual === true;
       const isCurrent = h.date === today && h.hour === currentHour;
 
       let classes = 'hour-slot';
       if (isScheduled) classes += ' scheduled';
+      if (isManual) classes += ' manual';
       if (isCurrent) classes += ' current';
 
       const evIndicator = schedule?.ev_charging ? '🚗 ' : '';
+      const lockIndicator = isManual ? '<span class="lock-indicator">🔒</span>' : '';
 
       html += `
         <div class="${classes}" data-date="${h.date}" data-hour="${h.hour}">
+          ${lockIndicator}
           <div class="time">${this._formatHour(h.hour)}</div>
           <div class="prices">
             ${h.buyPrice !== undefined ? `<span class="buy">${h.buyPrice.toFixed(2)}</span>` : ''}
@@ -1261,6 +1449,8 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('minutesValue').textContent = `${schedule.minutes || 30} min`;
       this.shadowRoot.getElementById('evCharging').checked = schedule.ev_charging || false;
       this.shadowRoot.getElementById('modalClear').style.display = 'block';
+      // Show unlock button only for manual entries
+      this.shadowRoot.getElementById('modalUnlock').style.display = schedule.manual ? 'block' : 'none';
     } else {
       this.shadowRoot.getElementById('socLimitType').value = 'max';
       this.shadowRoot.getElementById('socLimit').value = 100;
@@ -1270,6 +1460,7 @@ class EnergySchedulerCard extends HTMLElement {
       this.shadowRoot.getElementById('minutesValue').textContent = '30 min';
       this.shadowRoot.getElementById('evCharging').checked = false;
       this.shadowRoot.getElementById('modalClear').style.display = 'none';
+      this.shadowRoot.getElementById('modalUnlock').style.display = 'none';
     }
 
     this._toggleParameterFields(schedule?.action || '');
@@ -1394,6 +1585,31 @@ class EnergySchedulerCard extends HTMLElement {
     this._closeModal();
   }
 
+  async _handleUnlock() {
+    try {
+      const response = await this._hass.callApi(
+        'POST',
+        'hacs_energy_scheduler/manual',
+        {
+          date: this._modalDate,
+          hour: this._modalHour,
+          manual: false
+        }
+      );
+
+      if (response.success) {
+        this._showNotification('Schedule unlocked');
+        await this._refreshData();
+        this._closeModal();
+      } else {
+        this._showNotification('Failed to unlock', 'error');
+      }
+    } catch (error) {
+      console.error('Unlock error:', error);
+      this._showNotification('Failed to unlock', 'error');
+    }
+  }
+
   _showNotification(message, type = 'success') {
     const notification = this.shadowRoot.getElementById('notification');
     if (!notification) return;
@@ -1428,7 +1644,7 @@ class EnergySchedulerCard extends HTMLElement {
       this._showNotification('Optimization complete!');
 
       // Reload data to show new schedule
-      await this._loadData();
+      await this._refreshData();
     } catch (error) {
       console.error('Optimization failed:', error);
       this._showNotification('Optimization failed', 'error');
@@ -1445,79 +1661,93 @@ class EnergySchedulerCard extends HTMLElement {
 class EnergySchedulerCardEditor extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    try {
+      this.attachShadow({ mode: 'open' });
+    } catch (e) {
+      console.warn('Energy Scheduler Editor: Shadow DOM issue:', e.message);
+    }
   }
 
   setConfig(config) {
-    this._config = config;
-    this._render();
+    try {
+      this._config = config || {};
+      this._render();
+    } catch (e) {
+      console.error('Energy Scheduler Editor: setConfig error', e);
+    }
   }
 
   _render() {
-    this.shadowRoot.innerHTML = `
-      <style>
-        .editor {
-          padding: 16px;
-        }
-        .form-group {
-          margin-bottom: 12px;
-        }
-        .form-group label {
-          display: block;
-          margin-bottom: 4px;
-          font-weight: 500;
-          font-size: 14px;
-        }
-        .form-group input[type="text"],
-        .form-group input[type="number"] {
-          width: 100%;
-          padding: 8px;
-          border: 1px solid var(--divider-color);
-          border-radius: 4px;
-          box-sizing: border-box;
-        }
-        .checkbox-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-      </style>
-      <div class="editor">
-        <div class="form-group">
-          <label>Title</label>
-          <input type="text" id="title" value="${this._config?.title || 'Energy Scheduler'}">
-        </div>
-        <div class="form-group">
-          <label>Chart Height (px)</label>
-          <input type="number" id="chart_height" value="${this._config?.chart_height || 250}" min="100" max="500">
-        </div>
-        <div class="form-group">
-          <div class="checkbox-row">
-            <input type="checkbox" id="show_chart" ${this._config?.show_chart !== false ? 'checked' : ''}>
-            <label for="show_chart">Show Chart</label>
-          </div>
-        </div>
-        <div class="form-group">
-          <div class="checkbox-row">
-            <input type="checkbox" id="show_schedule" ${this._config?.show_schedule !== false ? 'checked' : ''}>
-            <label for="show_schedule">Show Schedule Grid</label>
-          </div>
-        </div>
-      </div>
-    `;
+    if (!this.shadowRoot) return;
 
-    this.shadowRoot.getElementById('title').addEventListener('change', (e) => {
-      this._updateConfig('title', e.target.value);
-    });
-    this.shadowRoot.getElementById('chart_height').addEventListener('change', (e) => {
-      this._updateConfig('chart_height', parseInt(e.target.value));
-    });
-    this.shadowRoot.getElementById('show_chart').addEventListener('change', (e) => {
-      this._updateConfig('show_chart', e.target.checked);
-    });
-    this.shadowRoot.getElementById('show_schedule').addEventListener('change', (e) => {
-      this._updateConfig('show_schedule', e.target.checked);
-    });
+    try {
+      this.shadowRoot.innerHTML = `
+        <style>
+          .editor {
+            padding: 16px;
+          }
+          .form-group {
+            margin-bottom: 12px;
+          }
+          .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 14px;
+          }
+          .form-group input[type="text"],
+          .form-group input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--divider-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+          }
+          .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+        </style>
+        <div class="editor">
+          <div class="form-group">
+            <label>Title</label>
+            <input type="text" id="title" value="${this._config?.title || 'Energy Scheduler'}">
+          </div>
+          <div class="form-group">
+            <label>Chart Height (px)</label>
+            <input type="number" id="chart_height" value="${this._config?.chart_height || 250}" min="100" max="500">
+          </div>
+          <div class="form-group">
+            <div class="checkbox-row">
+              <input type="checkbox" id="show_chart" ${this._config?.show_chart !== false ? 'checked' : ''}>
+              <label for="show_chart">Show Chart</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <div class="checkbox-row">
+              <input type="checkbox" id="show_schedule" ${this._config?.show_schedule !== false ? 'checked' : ''}>
+              <label for="show_schedule">Show Schedule Grid</label>
+            </div>
+          </div>
+        </div>
+      `;
+
+      this.shadowRoot.getElementById('title')?.addEventListener('change', (e) => {
+        this._updateConfig('title', e.target.value);
+      });
+      this.shadowRoot.getElementById('chart_height')?.addEventListener('change', (e) => {
+        this._updateConfig('chart_height', parseInt(e.target.value));
+      });
+      this.shadowRoot.getElementById('show_chart')?.addEventListener('change', (e) => {
+        this._updateConfig('show_chart', e.target.checked);
+      });
+      this.shadowRoot.getElementById('show_schedule')?.addEventListener('change', (e) => {
+        this._updateConfig('show_schedule', e.target.checked);
+      });
+    } catch (e) {
+      console.error('Energy Scheduler Editor: render error', e);
+    }
   }
 
   _updateConfig(key, value) {
@@ -1531,18 +1761,33 @@ class EnergySchedulerCardEditor extends HTMLElement {
   }
 }
 
-customElements.define('energy-scheduler-card', EnergySchedulerCard);
-customElements.define('energy-scheduler-card-editor', EnergySchedulerCardEditor);
+// Safe custom element registration - prevent double registration errors
+(() => {
+  try {
+    if (!customElements.get('energy-scheduler-card')) {
+      customElements.define('energy-scheduler-card', EnergySchedulerCard);
+    }
+    if (!customElements.get('energy-scheduler-card-editor')) {
+      customElements.define('energy-scheduler-card-editor', EnergySchedulerCardEditor);
+    }
+  } catch (e) {
+    console.warn('Energy Scheduler: Element registration warning:', e.message);
+  }
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'energy-scheduler-card',
-  name: 'Energy Scheduler Card',
-  description: 'Schedule energy actions based on electricity prices',
-  preview: true
-});
+  // Register card info only once
+  window.customCards = window.customCards || [];
+  const existingCard = window.customCards.find(c => c.type === 'energy-scheduler-card');
+  if (!existingCard) {
+    window.customCards.push({
+      type: 'energy-scheduler-card',
+      name: 'Energy Scheduler Card',
+      description: 'Schedule energy actions based on electricity prices',
+      preview: true
+    });
+  }
 
-console.info('%c ENERGY-SCHEDULER-CARD %c v1.0.0 ',
-  'color: white; background: #2196F3; font-weight: bold;',
-  'color: #2196F3; background: white; font-weight: bold;'
-);
+  console.info('%c ENERGY-SCHEDULER-CARD %c v1.1.1 ',
+    'color: white; background: #2196F3; font-weight: bold;',
+    'color: #2196F3; background: white; font-weight: bold;'
+  );
+})();
