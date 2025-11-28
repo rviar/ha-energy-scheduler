@@ -170,9 +170,12 @@ class CardStaticView(HomeAssistantView):
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Handle GET request for static files."""
+        _LOGGER.debug("Card JS requested: %s", filename)
+
         # Security: only allow specific files
         allowed_files = {"energy-scheduler-card.js"}
         if filename not in allowed_files:
+            _LOGGER.warning("Blocked request for non-allowed file: %s", filename)
             return web.Response(status=404)
 
         file_path = self._www_path / filename
@@ -187,10 +190,15 @@ class CardStaticView(HomeAssistantView):
 
             hass = request.app["hass"]
             content = await hass.async_add_executor_job(read_file)
+            _LOGGER.debug("Card JS served successfully, size: %d bytes", len(content))
             return web.Response(
                 text=content,
                 content_type="application/javascript",
-                headers={"Cache-Control": "no-cache"},
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                },
             )
         except Exception as err:
             _LOGGER.error("Error reading static file %s: %s", filename, err)

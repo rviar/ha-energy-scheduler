@@ -1,41 +1,102 @@
+// First line - verify file loading (appears before any other code)
+console.log('%c[Energy Scheduler] File loading started v1.5.0 @ ' + new Date().toISOString(), 'background: #222; color: #bada55; font-size: 14px;');
+
+// Global error handler to catch any parsing/loading errors
+window.__energySchedulerLoaded = false;
+window.__energySchedulerLoadStart = Date.now();
+
+window.addEventListener('error', function(e) {
+  if (e.filename && e.filename.includes('energy-scheduler-card')) {
+    console.error('%c[Energy Scheduler] SCRIPT ERROR!', 'background: red; color: white; font-size: 16px;', {
+      message: e.message,
+      filename: e.filename,
+      lineno: e.lineno,
+      colno: e.colno,
+      error: e.error
+    });
+  }
+});
+
+// Check if we're loading too late (card might already be trying to render)
+if (document.querySelector('energy-scheduler-card')) {
+  console.warn('%c[Energy Scheduler] WARNING: Card element exists before script loaded!', 'background: orange; color: black;');
+}
+
 /**
  * HACS Energy Scheduler - Lovelace Card for Home Assistant
  * Provides UI for scheduling actions based on energy prices
+ *
+ * Best practices applied:
+ * - Simple, robust initialization following HA official patterns
+ * - setConfig never throws, renders gracefully
+ * - hass setter handles reactive updates efficiently
+ * - Uses Shadow DOM for encapsulation
+ * - Proper lifecycle management with connectedCallback/disconnectedCallback
  */
 
-// Load Chart.js from CDN
+// Version for cache busting and debugging
+const CARD_VERSION = '1.5.0';
+
+// Debug mode - set to true for verbose logging
+const DEBUG = true;
+const log = (...args) => DEBUG && console.log('[Energy Scheduler]', ...args);
+const logWarn = (...args) => console.warn('[Energy Scheduler]', ...args);
+const logError = (...args) => console.error('[Energy Scheduler]', ...args);
+
+// Chart.js loading state (singleton)
+let chartJSPromise = null;
+let chartJSLoaded = false;
+
 const loadChartJS = () => {
-  return new Promise((resolve, reject) => {
+  if (chartJSLoaded && window.Chart) {
+    return Promise.resolve(window.Chart);
+  }
+
+  if (chartJSPromise) {
+    return chartJSPromise;
+  }
+
+  chartJSPromise = new Promise((resolve, reject) => {
     if (window.Chart) {
+      chartJSLoaded = true;
       resolve(window.Chart);
       return;
     }
+
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-    script.onload = () => resolve(window.Chart);
-    script.onerror = () => reject(new Error('Failed to load Chart.js'));
+    script.async = true;
+
+    script.onload = () => {
+      chartJSLoaded = true;
+      resolve(window.Chart);
+    };
+
+    script.onerror = () => {
+      chartJSPromise = null; // Allow retry
+      reject(new Error('Failed to load Chart.js'));
+    };
+
     document.head.appendChild(script);
   });
+
+  return chartJSPromise;
 };
 
 class EnergySchedulerCard extends HTMLElement {
-  // Card lifecycle states (simple state machine)
-  static STATE = {
-    CREATED: 'created',       // Constructor called
-    CONFIGURED: 'configured', // setConfig called
-    READY: 'ready',          // Both config and hass available, UI rendered
-    LOADED: 'loaded',        // Data loaded from API
-    ERROR: 'error'           // Error state
-  };
-
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
 
-    // Core state
-    this._state = EnergySchedulerCard.STATE.CREATED;
+    // Internal state
     this._hass = null;
     this._config = null;
+    this._rendered = false;
+    this._dataLoaded = false;
+    this._loadingData = false;
+    this._initAttempts = 0;
+    this._maxInitAttempts = 20; // Max attempts to wait for connection
+    this._initRetryTimer = null;
 
     // Data state
     this._data = null;
@@ -44,12 +105,15 @@ class EnergySchedulerCard extends HTMLElement {
 
     // UI state
     this._chartInstance = null;
-    this._dialogOpen = false;
+    this._chartHoursData = [];
     this._refreshInterval = null;
     this._resizeObserver = null;
 
-    // Pending operations (for preventing duplicate calls)
-    this._pendingDataLoad = null;
+    // Modal state
+    this._modalDate = null;
+    this._modalHour = null;
+
+    log('Constructor called');
   }
 
   static getConfigElement() {
@@ -67,48 +131,87 @@ class EnergySchedulerCard extends HTMLElement {
 
   /**
    * Home Assistant calls this setter whenever hass object updates.
-   * Can be called many times per second during state changes.
+   * This is the MAIN reactive entry point - keep it simple and fast.
    */
   set hass(hass) {
-    const hadHass = !!this._hass;
+    const firstHass = !this._hass && hass;
+    const prevHass = this._hass;
     this._hass = hass;
 
-    // Log first time hass is set (useful for debugging)
-    if (!hadHass && hass) {
-      console.info('Energy Scheduler: hass available, state:', this._state);
+    if (firstHass) {
+      log('First hass received', {
+        hasConnection: !!hass?.connection,
+        hasCallApi: typeof hass?.callApi === 'function',
+        connected: hass?.connected,
+        hasConfig: !!this._config
+      });
     }
 
-    // Trigger initialization flow if we have both config and hass
-    if (this._config && hass) {
-      this._ensureReady();
+    // If this is the first time we have hass and we have config, try to initialize
+    if (firstHass && this._config) {
+      this._tryInitialize();
     }
 
-    // Update mode display if already loaded
-    if (this._state === EnergySchedulerCard.STATE.LOADED) {
+    // If we were waiting for connection and now have it, try again
+    if (!firstHass && this._config && !this._dataLoaded && !this._loadingData) {
+      const wasConnected = prevHass?.connected;
+      const nowConnected = hass?.connected;
+      if (!wasConnected && nowConnected) {
+        log('Connection became ready, retrying initialization');
+        this._tryInitialize();
+      }
+    }
+
+    // Update mode display if we have data
+    if (this._dataLoaded) {
       this._updateCurrentMode();
     }
   }
 
+  get hass() {
+    return this._hass;
+  }
+
+  /**
+   * Check if hass is ready for API calls
+   */
+  _isHassReady() {
+    if (!this._hass) return false;
+    if (typeof this._hass.callApi !== 'function') return false;
+    // Check connection state if available
+    if (this._hass.connected === false) return false;
+    return true;
+  }
+
   /**
    * Lovelace calls this once when card is added/configured.
-   * Must NOT throw errors - causes "Configuration Error" in UI.
+   * CRITICAL: Must NOT throw errors - causes "Configuration Error" in UI.
    */
   setConfig(config) {
-    console.info('Energy Scheduler: setConfig called, hasHass:', !!this._hass);
+    log('setConfig called', { hasHass: !!this._hass, config });
 
-    this._config = {
-      title: config?.title || 'Energy Scheduler',
-      show_chart: config?.show_chart !== false,
-      show_schedule: config?.show_schedule !== false,
-      chart_height: config?.chart_height || 250,
-      ...(config || {})
-    };
+    try {
+      // Store config with defaults
+      this._config = {
+        title: config?.title || 'Energy Scheduler',
+        show_chart: config?.show_chart !== false,
+        show_schedule: config?.show_schedule !== false,
+        chart_height: config?.chart_height || 250,
+        ...(config || {})
+      };
 
-    this._state = EnergySchedulerCard.STATE.CONFIGURED;
+      // Render the card structure immediately
+      this._renderCard();
+      this._rendered = true;
 
-    // Trigger initialization flow if we have both config and hass
-    if (this._hass) {
-      this._ensureReady();
+      // If we already have hass, try to initialize data loading
+      if (this._hass) {
+        this._tryInitialize();
+      }
+    } catch (e) {
+      // Log error but don't throw - this prevents "Configuration Error"
+      logError('setConfig error', e);
+      this._renderError('Configuration error: ' + e.message);
     }
   }
 
@@ -119,134 +222,194 @@ class EnergySchedulerCard extends HTMLElement {
     return size;
   }
 
+  /**
+   * Called when card is added to DOM.
+   */
   connectedCallback() {
-    // Card added to DOM - restart refresh if was running
-    if (this._state === EnergySchedulerCard.STATE.LOADED && !this._refreshInterval) {
+    log('connectedCallback', {
+      dataLoaded: this._dataLoaded,
+      hasConfig: !!this._config,
+      hasHass: !!this._hass
+    });
+
+    // Restart refresh interval if we were previously loaded
+    if (this._dataLoaded && !this._refreshInterval) {
       this._startAutoRefresh();
     }
+
     // Recreate chart if needed (tab switch scenario)
-    if (this._state === EnergySchedulerCard.STATE.LOADED &&
-        this._config?.show_chart && !this._chartInstance) {
+    if (this._dataLoaded && this._config?.show_chart && !this._chartInstance) {
       this._setupChart();
     }
+
+    // If we have config and hass but haven't loaded data, try again
+    if (this._config && this._hass && !this._dataLoaded && !this._loadingData) {
+      log('connectedCallback: Retrying initialization');
+      this._tryInitialize();
+    }
   }
 
+  /**
+   * Called when card is removed from DOM.
+   */
   disconnectedCallback() {
-    // Card removed from DOM - cleanup
+    log('disconnectedCallback');
     this._stopAutoRefresh();
     this._destroyChart();
+    // Clear any pending init retry
+    if (this._initRetryTimer) {
+      clearTimeout(this._initRetryTimer);
+      this._initRetryTimer = null;
+    }
   }
 
-  // ==================== State Machine ====================
+  // ==================== Initialization ====================
 
   /**
-   * Ensures card reaches READY state and then loads data.
-   * Safe to call multiple times - handles deduplication internally.
+   * Try to initialize the card - checks if hass is ready first
+   * Will retry with polling if connection isn't ready yet
    */
-  async _ensureReady() {
-    // Guard: must have both config and hass
-    if (!this._config || !this._hass) {
+  _tryInitialize() {
+    // Prevent duplicate initialization
+    if (this._loadingData || this._dataLoaded) {
+      log('_tryInitialize: Already loading or loaded, skipping');
       return;
     }
 
-    // Already loaded - nothing to do
-    if (this._state === EnergySchedulerCard.STATE.LOADED) {
-      return;
+    // Clear any pending retry
+    if (this._initRetryTimer) {
+      clearTimeout(this._initRetryTimer);
+      this._initRetryTimer = null;
     }
 
-    // If we're already loading data, wait for that to complete
-    if (this._pendingDataLoad) {
-      return this._pendingDataLoad;
-    }
+    // Check if hass is ready
+    if (!this._isHassReady()) {
+      this._initAttempts++;
+      log(`_tryInitialize: Hass not ready, attempt ${this._initAttempts}/${this._maxInitAttempts}`, {
+        hasHass: !!this._hass,
+        hasCallApi: typeof this._hass?.callApi === 'function',
+        connected: this._hass?.connected
+      });
 
-    // Transition to READY: render UI
-    if (this._state === EnergySchedulerCard.STATE.CONFIGURED) {
-      console.info('Energy Scheduler: Rendering UI');
-      this._renderUI();
-      this._state = EnergySchedulerCard.STATE.READY;
-    }
-
-    // Transition to LOADED: fetch data
-    if (this._state === EnergySchedulerCard.STATE.READY) {
-      this._pendingDataLoad = this._loadAllData();
-      try {
-        await this._pendingDataLoad;
-        this._state = EnergySchedulerCard.STATE.LOADED;
-        this._startAutoRefresh();
-      } catch (error) {
-        console.error('Energy Scheduler: Failed to load data', error);
-        this._state = EnergySchedulerCard.STATE.ERROR;
-        // Schedule retry - only if we still have hass
-        setTimeout(() => {
-          if (this._state === EnergySchedulerCard.STATE.ERROR && this._hass) {
-            this._state = EnergySchedulerCard.STATE.READY;
-            this._ensureReady();
-          }
-        }, 5000);
-      } finally {
-        this._pendingDataLoad = null;
+      if (this._initAttempts < this._maxInitAttempts) {
+        // Exponential backoff: 100ms, 200ms, 400ms, ... up to 2s
+        const delay = Math.min(100 * Math.pow(1.5, this._initAttempts), 2000);
+        log(`_tryInitialize: Scheduling retry in ${delay}ms`);
+        this._initRetryTimer = setTimeout(() => {
+          this._initRetryTimer = null;
+          this._tryInitialize();
+        }, delay);
+        return;
+      } else {
+        logWarn('_tryInitialize: Max attempts reached, forcing initialization anyway');
+        // Fall through to try initialization anyway
       }
     }
+
+    log('_tryInitialize: Hass is ready, starting initialization');
+    this._initAttempts = 0;
+    this._initialize();
   }
 
   /**
-   * Loads all required data with retries.
-   * Returns a promise that resolves when data is loaded.
+   * Initialize the card - load data from API
+   * Called when we have both config and hass is ready
    */
-  async _loadAllData() {
+  async _initialize() {
+    // Prevent duplicate initialization
+    if (this._loadingData || this._dataLoaded) {
+      return;
+    }
+
+    this._loadingData = true;
+    this._showLoadingState();
+    log('_initialize: Starting data load');
+
+    try {
+      await this._loadData();
+      this._dataLoaded = true;
+      log('_initialize: Data loaded successfully');
+      this._updateUI();
+      this._startAutoRefresh();
+    } catch (error) {
+      logError('_initialize: Failed to load data', error);
+      this._showError(error.message || 'Failed to load data');
+      // Schedule retry after 5 seconds
+      setTimeout(() => {
+        this._loadingData = false;
+        this._initAttempts = 0; // Reset attempts for fresh retry
+        if (this._hass && this._config) {
+          this._tryInitialize();
+        }
+      }, 5000);
+    } finally {
+      this._loadingData = false;
+    }
+  }
+
+  /**
+   * Load data from API with retries
+   */
+  async _loadData() {
     const MAX_RETRIES = 5;
-    const BASE_DELAY = 300;
+    const BASE_DELAY = 500;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        // Check hass is still available
+        log(`_loadData: Attempt ${attempt}/${MAX_RETRIES}`);
+
+        // Validate hass is ready
         if (!this._hass) {
-          throw new Error('hass not available');
+          throw new Error('Home Assistant not available');
         }
 
-        console.info(`Energy Scheduler: Loading data (attempt ${attempt}/${MAX_RETRIES})`);
+        if (typeof this._hass.callApi !== 'function') {
+          throw new Error('Home Assistant API not ready (callApi not a function)');
+        }
+
+        // Check connection status
+        if (this._hass.connected === false) {
+          throw new Error('Home Assistant not connected');
+        }
+
+        log('_loadData: Making API calls...');
 
         // Load config and data in parallel
         const [configResult, dataResult] = await Promise.all([
-          this._fetchConfig(),
-          this._fetchData()
+          this._hass.callApi('GET', 'hacs_energy_scheduler/config'),
+          this._hass.callApi('GET', 'hacs_energy_scheduler/data')
         ]);
+
+        log('_loadData: API responses received', {
+          configResult: !!configResult,
+          dataResult: !!dataResult
+        });
+
+        if (!configResult || !dataResult) {
+          throw new Error('Invalid API response (null or undefined)');
+        }
 
         this._integrationConfig = configResult;
         this._data = dataResult;
         this._schedule = dataResult?.schedule || {};
 
-        // Update UI with loaded data
-        this._updateScheduleGrid();
-
-        // Setup chart if enabled
-        if (this._config?.show_chart) {
-          await this._setupChart();
-        }
-
-        console.info('Energy Scheduler: Data loaded successfully');
+        log('_loadData: Success!');
         return;
 
       } catch (error) {
         const isLastAttempt = attempt === MAX_RETRIES;
-        const delay = BASE_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+
+        logWarn(`_loadData: Attempt ${attempt} failed:`, error.message);
 
         if (isLastAttempt) {
           throw error;
         }
 
-        console.warn(`Energy Scheduler: Load failed, retrying in ${delay}ms...`, error.message);
+        log(`_loadData: Retrying in ${delay}ms...`);
         await this._delay(delay);
       }
     }
-  }
-
-  async _fetchConfig() {
-    return this._hass.callApi('GET', 'hacs_energy_scheduler/config');
-  }
-
-  async _fetchData() {
-    return this._hass.callApi('GET', 'hacs_energy_scheduler/data');
   }
 
   _delay(ms) {
@@ -281,10 +444,10 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   async _refreshData() {
-    if (!this._hass || this._state !== EnergySchedulerCard.STATE.LOADED) return;
+    if (!this._hass || !this._dataLoaded) return;
 
     try {
-      const data = await this._fetchData();
+      const data = await this._hass.callApi('GET', 'hacs_energy_scheduler/data');
       this._data = data;
       this._schedule = data?.schedule || {};
       this._updateScheduleGrid();
@@ -296,20 +459,151 @@ class EnergySchedulerCard extends HTMLElement {
 
   // ==================== UI Rendering ====================
 
-  _renderUI() {
+  /**
+   * Render the main card structure
+   * Called once from setConfig
+   */
+  _renderCard() {
     if (!this.shadowRoot) return;
 
-    const style = document.createElement('style');
-    style.textContent = this._getStyles();
+    this.shadowRoot.innerHTML = `
+      <style>${this._getStyles()}</style>
+      <ha-card>
+        <div class="card-content">
+          <div class="card-header">
+            <h2>⚡ ${this._config?.title || 'Energy Scheduler'}</h2>
+            <div class="header-actions">
+              <button class="optimize-btn" id="optimizeBtn" title="Run optimization">
+                <span class="icon">🔄</span>
+                <span class="text">Optimize</span>
+              </button>
+            </div>
+          </div>
 
-    const card = document.createElement('ha-card');
-    card.innerHTML = this._getTemplate();
+          ${this._config?.show_chart ? `
+            <div class="chart-section">
+              <div class="chart-container">
+                <div class="chart-loading" id="chartLoading">Loading chart...</div>
+                <canvas id="priceChart" style="display: none;"></canvas>
+              </div>
+            </div>
+          ` : ''}
 
-    this.shadowRoot.innerHTML = '';
-    this.shadowRoot.appendChild(style);
-    this.shadowRoot.appendChild(card);
+          ${this._config?.show_schedule ? `
+            <div class="schedule-section">
+              <div class="current-mode">
+                <span class="label">Mode:</span>
+                <span class="value" id="currentModeValue">--</span>
+              </div>
+              <div class="schedule-grid" id="scheduleGrid">
+                <div class="loading-placeholder">
+                  <div class="loading-spinner"></div>
+                  <span>Loading schedule...</span>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+
+        ${this._getModalTemplate()}
+
+        <div class="notification" id="notification"></div>
+      </ha-card>
+    `;
 
     this._setupEventListeners();
+  }
+
+  /**
+   * Show loading state within the already rendered card
+   */
+  _showLoadingState() {
+    const grid = this.shadowRoot?.getElementById('scheduleGrid');
+    if (grid) {
+      grid.innerHTML = `
+        <div class="loading-placeholder">
+          <div class="loading-spinner"></div>
+          <span>Loading schedule...</span>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Show error state within the already rendered card
+   */
+  _showError(message) {
+    const grid = this.shadowRoot?.getElementById('scheduleGrid');
+    if (grid) {
+      grid.innerHTML = `
+        <div class="error-placeholder">
+          <div class="error-icon">⚠️</div>
+          <div class="error-message">${message}</div>
+          <button class="retry-btn" id="retryBtn">Retry</button>
+        </div>
+      `;
+
+      this.shadowRoot.getElementById('retryBtn')?.addEventListener('click', () => {
+        this._loadingData = false;
+        this._dataLoaded = false;
+        this._initialize();
+      });
+    }
+  }
+
+  /**
+   * Render a complete error card (for critical errors)
+   */
+  _renderError(message) {
+    if (!this.shadowRoot) return;
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        ha-card {
+          padding: 16px;
+        }
+        .error-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 24px 16px;
+          text-align: center;
+        }
+        .error-icon {
+          font-size: 32px;
+          margin-bottom: 12px;
+        }
+        .error-title {
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+          margin-bottom: 8px;
+        }
+        .error-message {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+      </style>
+      <ha-card>
+        <div class="error-state">
+          <div class="error-icon">⚠️</div>
+          <div class="error-title">⚡ ${this._config?.title || 'Energy Scheduler'}</div>
+          <div class="error-message">${message || 'Failed to load'}</div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  /**
+   * Update all UI components after data is loaded
+   */
+  _updateUI() {
+    this._updateScheduleGrid();
+    this._updateCurrentMode();
+
+    if (this._config?.show_chart) {
+      this._setupChart();
+    }
   }
 
   // ==================== Date/Time Formatters ====================
@@ -379,8 +673,11 @@ class EnergySchedulerCard extends HTMLElement {
       }
 
       ha-card {
-        padding: 16px;
         overflow: hidden;
+      }
+
+      .card-content {
+        padding: 16px;
       }
 
       .card-header {
@@ -459,6 +756,15 @@ class EnergySchedulerCard extends HTMLElement {
         height: 100% !important;
       }
 
+      .chart-loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        color: var(--secondary-text-color);
+        font-size: 13px;
+      }
+
       .current-mode {
         display: flex;
         align-items: center;
@@ -485,6 +791,51 @@ class EnergySchedulerCard extends HTMLElement {
         gap: 6px;
       }
 
+      .loading-placeholder,
+      .error-placeholder {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 16px;
+        color: var(--secondary-text-color);
+        text-align: center;
+        gap: 12px;
+      }
+
+      .loading-spinner {
+        width: 24px;
+        height: 24px;
+        border: 3px solid var(--divider-color);
+        border-top-color: var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      .error-placeholder .error-icon {
+        font-size: 32px;
+      }
+
+      .error-placeholder .error-message {
+        font-size: 13px;
+        max-width: 250px;
+      }
+
+      .retry-btn {
+        padding: 8px 16px;
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .retry-btn:hover {
+        opacity: 0.9;
+      }
+
       .day-separator {
         grid-column: 1 / -1;
         padding: 6px 0;
@@ -508,6 +859,7 @@ class EnergySchedulerCard extends HTMLElement {
         text-align: center;
         border: 2px solid transparent;
         font-size: 11px;
+        position: relative;
       }
 
       .hour-slot:hover {
@@ -535,10 +887,6 @@ class EnergySchedulerCard extends HTMLElement {
         position: absolute;
         top: 2px;
         right: 2px;
-      }
-
-      .hour-slot {
-        position: relative;
       }
 
       .hour-slot .time {
@@ -862,55 +1210,17 @@ class EnergySchedulerCard extends HTMLElement {
       }
 
       .empty-state {
+        grid-column: 1 / -1;
         text-align: center;
         padding: 20px;
-        color: var(--secondary-text-color);
-        font-size: 13px;
-      }
-
-      .chart-loading {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: var(--chart-height);
         color: var(--secondary-text-color);
         font-size: 13px;
       }
     `;
   }
 
-  _getTemplate() {
+  _getModalTemplate() {
     return `
-      <div class="card-header">
-        <h2>⚡ ${this._config?.title || 'Energy Scheduler'}</h2>
-        <div class="header-actions">
-          <button class="optimize-btn" id="optimizeBtn" title="Run optimization">
-            <span class="icon">🔄</span>
-            <span class="text">Optimize</span>
-          </button>
-        </div>
-      </div>
-
-      ${this._config?.show_chart ? `
-        <div class="chart-section">
-          <div class="chart-container">
-            <canvas id="priceChart"></canvas>
-          </div>
-        </div>
-      ` : ''}
-
-      ${this._config?.show_schedule ? `
-        <div class="schedule-section">
-          <div class="current-mode">
-            <span class="label">Mode:</span>
-            <span class="value" id="currentModeValue">--</span>
-          </div>
-          <div class="schedule-grid" id="scheduleGrid">
-            <div class="empty-state">Loading...</div>
-          </div>
-        </div>
-      ` : ''}
-
       <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
           <div class="modal-header">
@@ -999,13 +1309,12 @@ class EnergySchedulerCard extends HTMLElement {
           </div>
         </div>
       </div>
-
-      <div class="notification" id="notification"></div>
     `;
   }
 
   _setupEventListeners() {
     const root = this.shadowRoot;
+    if (!root) return;
 
     // Optimize button
     const optimizeBtn = root.getElementById('optimizeBtn');
@@ -1085,7 +1394,8 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   async _setupChart() {
-    const canvas = this.shadowRoot.getElementById('priceChart');
+    const canvas = this.shadowRoot?.getElementById('priceChart');
+    const chartLoading = this.shadowRoot?.getElementById('chartLoading');
     if (!canvas) return;
 
     // Destroy existing chart instance before creating a new one
@@ -1096,6 +1406,10 @@ class EnergySchedulerCard extends HTMLElement {
 
     try {
       await loadChartJS();
+
+      // Hide loading, show canvas
+      if (chartLoading) chartLoading.style.display = 'none';
+      canvas.style.display = 'block';
 
       const ctx = canvas.getContext('2d');
       const textColor = getComputedStyle(this).getPropertyValue('--primary-text-color') || '#333';
@@ -1235,9 +1549,9 @@ class EnergySchedulerCard extends HTMLElement {
             }
           },
           onHover: (event, elements) => {
-            const canvas = event.native?.target;
-            if (canvas) {
-              canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+            const canvasEl = event.native?.target;
+            if (canvasEl) {
+              canvasEl.style.cursor = elements.length > 0 ? 'pointer' : 'default';
             }
           }
         }
@@ -1256,6 +1570,9 @@ class EnergySchedulerCard extends HTMLElement {
       }
     } catch (error) {
       console.error('Failed to initialize Chart.js:', error);
+      if (chartLoading) {
+        chartLoading.textContent = 'Failed to load chart';
+      }
     }
   }
 
@@ -1325,14 +1642,9 @@ class EnergySchedulerCard extends HTMLElement {
     this._chartInstance.update('none');
   }
 
-  // Alias for backwards compatibility
   _updateScheduleGrid() {
-    this._updateScheduleList();
-  }
-
-  _updateScheduleList() {
-    const grid = this.shadowRoot.getElementById('scheduleGrid');
-    if (!grid) return;
+    const grid = this.shadowRoot?.getElementById('scheduleGrid');
+    if (!grid || !this._data) return;
 
     const hours = this._getAvailableHours();
 
@@ -1383,7 +1695,7 @@ class EnergySchedulerCard extends HTMLElement {
     });
 
     if (html === '') {
-      html = '<div class="empty-state">No data</div>';
+      html = '<div class="empty-state">No price data available</div>';
     }
 
     grid.innerHTML = html;
@@ -1395,15 +1707,13 @@ class EnergySchedulerCard extends HTMLElement {
         this._openModal(date, hour);
       });
     });
-
-    this._updateCurrentMode();
   }
 
   _updateCurrentMode() {
     const modeEntity = this._integrationConfig?.inverter_mode_entity;
     if (modeEntity && this._hass) {
       const state = this._hass.states[modeEntity];
-      const modeValue = this.shadowRoot.getElementById('currentModeValue');
+      const modeValue = this.shadowRoot?.getElementById('currentModeValue');
       if (state && modeValue) {
         modeValue.textContent = state.state;
       }
@@ -1411,7 +1721,7 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   _openModal(date, hour) {
-    const modal = this.shadowRoot.getElementById('modalOverlay');
+    const modal = this.shadowRoot?.getElementById('modalOverlay');
     if (!modal) return;
 
     const hourStr = hour.toString();
@@ -1467,15 +1777,13 @@ class EnergySchedulerCard extends HTMLElement {
 
     this._modalDate = date;
     this._modalHour = hour;
-    this._dialogOpen = true;
 
     modal.classList.add('open');
   }
 
   _closeModal() {
-    const modal = this.shadowRoot.getElementById('modalOverlay');
+    const modal = this.shadowRoot?.getElementById('modalOverlay');
     if (modal) modal.classList.remove('open');
-    this._dialogOpen = false;
   }
 
   _toggleParameterFields(action) {
@@ -1486,13 +1794,13 @@ class EnergySchedulerCard extends HTMLElement {
                                 this._integrationConfig.ev_stop_condition.length > 0;
     const hasSocSensor = !!this._integrationConfig?.soc_sensor;
 
-    const optionsSection = this.shadowRoot.getElementById('optionsSection');
-    const evChargingGroup = this.shadowRoot.getElementById('evChargingGroup');
-    const socDivider = this.shadowRoot.getElementById('socDivider');
-    const socSection = this.shadowRoot.getElementById('socSection');
-    const fullHourGroup = this.shadowRoot.getElementById('fullHourGroup');
-    const durationDivider = this.shadowRoot.getElementById('durationDivider');
-    const minutesGroup = this.shadowRoot.getElementById('minutesGroup');
+    const optionsSection = this.shadowRoot?.getElementById('optionsSection');
+    const evChargingGroup = this.shadowRoot?.getElementById('evChargingGroup');
+    const socDivider = this.shadowRoot?.getElementById('socDivider');
+    const socSection = this.shadowRoot?.getElementById('socSection');
+    const fullHourGroup = this.shadowRoot?.getElementById('fullHourGroup');
+    const durationDivider = this.shadowRoot?.getElementById('durationDivider');
+    const minutesGroup = this.shadowRoot?.getElementById('minutesGroup');
 
     // Show options section when action is non-default
     if (optionsSection) {
@@ -1505,7 +1813,7 @@ class EnergySchedulerCard extends HTMLElement {
     }
 
     // Check if EV charging is selected to hide SOC section
-    const evChargingChecked = this.shadowRoot.getElementById('evCharging')?.checked;
+    const evChargingChecked = this.shadowRoot?.getElementById('evCharging')?.checked;
 
     // Show SOC section only if SOC sensor is configured and not using EV charging
     const showSocSection = hasSocSensor && !evChargingChecked;
@@ -1527,14 +1835,14 @@ class EnergySchedulerCard extends HTMLElement {
     }
 
     // Handle full hour toggle state
-    const fullHourChecked = this.shadowRoot.getElementById('fullHour')?.checked;
+    const fullHourChecked = this.shadowRoot?.getElementById('fullHour')?.checked;
     if (minutesGroup) {
       minutesGroup.style.display = !fullHourChecked ? 'block' : 'none';
     }
   }
 
   async _handleSave() {
-    const action = this.shadowRoot.getElementById('actionSelect').value;
+    const action = this.shadowRoot?.getElementById('actionSelect')?.value;
 
     if (!action) {
       this._showNotification('Select action', 'error');
@@ -1553,16 +1861,16 @@ class EnergySchedulerCard extends HTMLElement {
                                   Array.isArray(this._integrationConfig.ev_stop_condition) &&
                                   this._integrationConfig.ev_stop_condition.length > 0;
       if (hasEvStopCondition) {
-        evCharging = this.shadowRoot.getElementById('evCharging').checked;
+        evCharging = this.shadowRoot.getElementById('evCharging')?.checked || false;
       }
       // Only set SOC limit if not using EV charging (EV uses its own stop condition)
       if (!evCharging && this._integrationConfig?.soc_sensor) {
-        socLimit = parseInt(this.shadowRoot.getElementById('socLimit').value);
-        socLimitType = this.shadowRoot.getElementById('socLimitType').value;
+        socLimit = parseInt(this.shadowRoot.getElementById('socLimit')?.value || '100');
+        socLimitType = this.shadowRoot.getElementById('socLimitType')?.value || 'max';
       }
-      fullHour = this.shadowRoot.getElementById('fullHour').checked;
+      fullHour = this.shadowRoot.getElementById('fullHour')?.checked || false;
       if (!fullHour) {
-        minutes = parseInt(this.shadowRoot.getElementById('minutes').value);
+        minutes = parseInt(this.shadowRoot.getElementById('minutes')?.value || '30');
       }
     }
 
@@ -1611,7 +1919,7 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   _showNotification(message, type = 'success') {
-    const notification = this.shadowRoot.getElementById('notification');
+    const notification = this.shadowRoot?.getElementById('notification');
     if (!notification) return;
 
     notification.textContent = message;
@@ -1623,18 +1931,18 @@ class EnergySchedulerCard extends HTMLElement {
   }
 
   async _runOptimization() {
-    const btn = this.shadowRoot.getElementById('optimizeBtn');
+    const btn = this.shadowRoot?.getElementById('optimizeBtn');
     if (!btn || btn.classList.contains('loading')) return;
 
     // Set loading state
     btn.classList.add('loading');
     const iconSpan = btn.querySelector('.icon');
     const textSpan = btn.querySelector('.text');
-    const originalIcon = iconSpan.textContent;
-    const originalText = textSpan.textContent;
+    const originalIcon = iconSpan?.textContent;
+    const originalText = textSpan?.textContent;
 
-    iconSpan.innerHTML = '<div class="spinner"></div>';
-    textSpan.textContent = 'Running...';
+    if (iconSpan) iconSpan.innerHTML = '<div class="spinner"></div>';
+    if (textSpan) textSpan.textContent = 'Running...';
 
     try {
       await this._hass.callService('hacs_energy_scheduler', 'run_optimization', {
@@ -1651,8 +1959,8 @@ class EnergySchedulerCard extends HTMLElement {
     } finally {
       // Reset button state
       btn.classList.remove('loading');
-      iconSpan.textContent = originalIcon;
-      textSpan.textContent = originalText;
+      if (iconSpan) iconSpan.textContent = originalIcon;
+      if (textSpan) textSpan.textContent = originalText;
     }
   }
 }
@@ -1761,33 +2069,87 @@ class EnergySchedulerCardEditor extends HTMLElement {
   }
 }
 
-// Safe custom element registration - prevent double registration errors
-(() => {
+// Store classes globally so they survive iframe recreation
+window.EnergySchedulerCard = EnergySchedulerCard;
+window.EnergySchedulerCardEditor = EnergySchedulerCardEditor;
+
+const CARD_TYPE = 'energy-scheduler-card';
+const EDITOR_TYPE = 'energy-scheduler-card-editor';
+
+// Registration function that can be called multiple times safely
+function registerEnergySchedulerCard() {
   try {
-    if (!customElements.get('energy-scheduler-card')) {
-      customElements.define('energy-scheduler-card', EnergySchedulerCard);
+    if (!customElements.get(CARD_TYPE)) {
+      customElements.define(CARD_TYPE, window.EnergySchedulerCard);
+      console.log(`%c[Energy Scheduler] Registered ${CARD_TYPE}`, 'color: #4caf50;');
     }
-    if (!customElements.get('energy-scheduler-card-editor')) {
-      customElements.define('energy-scheduler-card-editor', EnergySchedulerCardEditor);
+    if (!customElements.get(EDITOR_TYPE)) {
+      customElements.define(EDITOR_TYPE, window.EnergySchedulerCardEditor);
+      console.log(`%c[Energy Scheduler] Registered ${EDITOR_TYPE}`, 'color: #4caf50;');
     }
+    return true;
   } catch (e) {
-    console.warn('Energy Scheduler: Element registration warning:', e.message);
+    // If registration fails with "already defined", that's actually OK
+    if (e.message.includes('already been defined')) {
+      console.log('%c[Energy Scheduler] Elements already defined (OK)', 'color: #2196f3;');
+      return true;
+    }
+    console.error('%c[Energy Scheduler] Registration error:', 'color: red;', e);
+    return false;
   }
+}
 
-  // Register card info only once
-  window.customCards = window.customCards || [];
-  const existingCard = window.customCards.find(c => c.type === 'energy-scheduler-card');
-  if (!existingCard) {
-    window.customCards.push({
-      type: 'energy-scheduler-card',
-      name: 'Energy Scheduler Card',
-      description: 'Schedule energy actions based on electricity prices',
-      preview: true
-    });
+// Initial registration
+console.log('%c[Energy Scheduler] Starting element registration...', 'color: #ff9800;');
+registerEnergySchedulerCard();
+
+// Register with card picker
+window.customCards = window.customCards || [];
+if (!window.customCards.some(c => c.type === CARD_TYPE)) {
+  window.customCards.push({
+    type: CARD_TYPE,
+    name: 'Energy Scheduler Card',
+    description: 'Schedule energy actions based on electricity prices',
+    preview: true,
+    documentationURL: 'https://github.com/your-repo/hacs-energy-scheduler'
+  });
+  console.log('%c[Energy Scheduler] Added to customCards', 'color: #4caf50;');
+}
+
+// Log version
+console.info(
+  `%c ENERGY-SCHEDULER-CARD %c v${CARD_VERSION} %c READY `,
+  'color: white; background: #4caf50; font-weight: bold; border-radius: 3px 0 0 3px;',
+  'color: #4caf50; background: #e8f5e9; font-weight: bold;',
+  'color: white; background: #4caf50; border-radius: 0 3px 3px 0;'
+);
+
+window.__energySchedulerLoaded = true;
+const loadTime = Date.now() - (window.__energySchedulerLoadStart || Date.now());
+console.log(`%c[Energy Scheduler] File fully loaded in ${loadTime}ms`, 'background: #222; color: #bada55; font-size: 14px;');
+
+// Monitor for registry clearing and re-register if needed
+// This handles the case when HA frontend reloads and clears the registry
+let registryCheckInterval = setInterval(() => {
+  if (!customElements.get(CARD_TYPE) && window.EnergySchedulerCard) {
+    console.warn('%c[Energy Scheduler] Registry cleared, re-registering...', 'background: orange; color: black;');
+    if (registerEnergySchedulerCard()) {
+      console.log('%c[Energy Scheduler] Re-registration successful!', 'color: #4caf50; font-weight: bold;');
+    }
   }
+}, 50);
 
-  console.info('%c ENERGY-SCHEDULER-CARD %c v1.1.1 ',
-    'color: white; background: #2196F3; font-weight: bold;',
-    'color: #2196F3; background: white; font-weight: bold;'
-  );
-})();
+// Stop monitoring after 2 seconds (HA should be stable by then)
+setTimeout(() => {
+  clearInterval(registryCheckInterval);
+  registryCheckInterval = null;
+
+  const finalCheck = customElements.get(CARD_TYPE);
+  if (finalCheck) {
+    console.log('%c[Energy Scheduler] Final check: Element stable in registry ✓', 'color: #4caf50; font-weight: bold;');
+  } else {
+    console.error('%c[Energy Scheduler] Final check: Element NOT in registry!', 'background: red; color: white;');
+    // One last attempt
+    registerEnergySchedulerCard();
+  }
+}, 2000);
