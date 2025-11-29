@@ -74,6 +74,12 @@ export class EnergySchedulerCard extends LitElement {
     if (this._dataLoaded && !this._refreshInterval) {
       this._startAutoRefresh();
     }
+    // Recreate chart when element is reconnected (e.g., tab switching in HA)
+    if (this._dataLoaded && this._config?.show_chart) {
+      this.updateComplete.then(() => {
+        this._setupChart();
+      });
+    }
   }
 
   disconnectedCallback(): void {
