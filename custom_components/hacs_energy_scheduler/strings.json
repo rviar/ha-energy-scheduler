@@ -182,7 +182,11 @@
         },
         "soc_limit": {
           "name": "SOC Limit",
-          "description": "Stop action when SOC reaches this percentage"
+          "description": "Target SOC percentage to reach"
+        },
+        "soc_limit_type": {
+          "name": "SOC Limit Type",
+          "description": "auto: detect from current SOC, max: charge up to limit, min: discharge down to limit"
         },
         "full_hour": {
           "name": "Full Hour",

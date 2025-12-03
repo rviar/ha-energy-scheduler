@@ -270,6 +270,14 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         current_date = local_now.strftime("%Y-%m-%d")
         current_hour = str(local_now.hour)
         current_minute = local_now.minute
+        date_key = current_date  # Used for locked_soc_types key
+
+        # Clean up stale SOC direction locks (from previous hours/days)
+        if hasattr(self, "_locked_soc_types"):
+            current_key = f"{current_date}_{current_hour}"
+            stale_keys = [k for k in self._locked_soc_types if k != current_key]
+            for k in stale_keys:
+                del self._locked_soc_types[k]
 
         # Sync current action with actual inverter state (handles external changes)
         actual_mode = self._get_current_inverter_mode()
@@ -311,9 +319,47 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             # Check SOC limit if specified (only if not EV charging mode)
             if soc_limit is not None and self.soc_sensor and not ev_charging:
                 current_soc = self._get_current_soc()
-                soc_limit_type = hour_schedule.get("soc_limit_type", "max")
+                soc_limit_type = hour_schedule.get("soc_limit_type")
 
                 if current_soc is not None:
+                    # Auto-detect direction if not specified or set to "auto"
+                    # Direction is locked on first detection to prevent ping-pong
+                    if soc_limit_type is None or soc_limit_type == "auto":
+                        # Check if we already locked direction for this schedule entry
+                        schedule_key = f"{date_key}_{current_hour}"
+                        locked_type = getattr(self, "_locked_soc_types", {}).get(schedule_key)
+
+                        if locked_type:
+                            # Use previously locked direction
+                            soc_limit_type = locked_type
+                        else:
+                            # First time - detect and lock direction
+                            # Use hysteresis: 2% buffer to avoid oscillation
+                            hysteresis = 2
+                            if current_soc < soc_limit - hysteresis:
+                                soc_limit_type = "max"  # Need to charge up to target
+                            elif current_soc > soc_limit + hysteresis:
+                                soc_limit_type = "min"  # Need to discharge down to target
+                            else:
+                                # Within hysteresis band - already close to target
+                                should_apply = False
+                                should_revert = self._current_action == action
+                                if should_revert:
+                                    _LOGGER.info(
+                                        "SOC already at target (%s%% ≈ %s%%), reverting to default mode",
+                                        current_soc, soc_limit
+                                    )
+                                soc_limit_type = "max"  # Fallback, won't be used
+
+                            # Lock the detected direction for this hour
+                            if not hasattr(self, "_locked_soc_types"):
+                                self._locked_soc_types = {}
+                            self._locked_soc_types[schedule_key] = soc_limit_type
+                            _LOGGER.debug(
+                                "Auto-detected SOC direction for %s: %s (current=%s%%, target=%s%%)",
+                                schedule_key, soc_limit_type, current_soc, soc_limit
+                            )
+
                     # "max" = charging mode: stop when SOC >= limit
                     # "min" = discharging mode: stop when SOC <= limit
                     limit_reached = False
@@ -332,6 +378,10 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                                 "SOC %s limit reached (%s%% %s %s%%), reverting to default mode",
                                 direction, current_soc, comparison, soc_limit
                             )
+                            # Clear lock when target reached
+                            schedule_key = f"{date_key}_{current_hour}"
+                            if hasattr(self, "_locked_soc_types"):
+                                self._locked_soc_types.pop(schedule_key, None)
 
             # Check minutes limit (> instead of >= to include the target minute)
             if minutes is not None and not full_hour:

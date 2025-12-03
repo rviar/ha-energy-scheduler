@@ -238,7 +238,7 @@ async def _async_register_services(
         hour = str(call.data[ATTR_HOUR])
         action = call.data[ATTR_ACTION]
         soc_limit = call.data.get(ATTR_SOC_LIMIT)
-        soc_limit_type = call.data.get(ATTR_SOC_LIMIT_TYPE, "max")
+        soc_limit_type = call.data.get(ATTR_SOC_LIMIT_TYPE)  # None = auto-detect
         full_hour = call.data.get(ATTR_FULL_HOUR, False)
         minutes = call.data.get(ATTR_MINUTES)
         ev_charging = call.data.get(ATTR_EV_CHARGING, False)
@@ -325,7 +325,7 @@ async def _async_register_api(
                 hour = str(data.get("hour"))
                 action = data.get("action")
                 soc_limit = data.get("soc_limit")
-                soc_limit_type = data.get("soc_limit_type", "max")
+                soc_limit_type = data.get("soc_limit_type")  # None = auto-detect
                 full_hour = data.get("full_hour", False)
                 minutes = data.get("minutes")
                 ev_charging = data.get("ev_charging", False)

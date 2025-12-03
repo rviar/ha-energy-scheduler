@@ -741,7 +741,7 @@ export class EnergySchedulerCard extends LitElement {
 
     // Update form values
     if (schedule) {
-      this._setFormValue('socLimitType', schedule.soc_limit_type || 'max');
+      this._setFormValue('socLimitType', schedule.soc_limit_type || 'auto');
       this._setFormValue('socLimit', schedule.soc_limit?.toString() || '100');
       this._setFormText('socLimitValue', `${schedule.soc_limit || 100}%`);
       this._setFormChecked('fullHour', schedule.full_hour || false);
@@ -751,7 +751,7 @@ export class EnergySchedulerCard extends LitElement {
       this._setDisplay('modalClear', 'block');
       this._setDisplay('modalUnlock', schedule.manual ? 'block' : 'none');
     } else {
-      this._setFormValue('socLimitType', 'max');
+      this._setFormValue('socLimitType', 'auto');
       this._setFormValue('socLimit', '100');
       this._setFormText('socLimitValue', '100%');
       this._setFormChecked('fullHour', true);
@@ -842,7 +842,7 @@ export class EnergySchedulerCard extends LitElement {
 
       if (!evCharging && this._integrationConfig?.soc_sensor) {
         socLimit = parseInt((this.shadowRoot?.getElementById('socLimit') as HTMLInputElement)?.value || '100');
-        socLimitType = (this.shadowRoot?.getElementById('socLimitType') as HTMLSelectElement)?.value || 'max';
+        socLimitType = (this.shadowRoot?.getElementById('socLimitType') as HTMLSelectElement)?.value || 'auto';
       }
 
       fullHour = (this.shadowRoot?.getElementById('fullHour') as HTMLInputElement)?.checked || false;
@@ -1068,10 +1068,11 @@ export class EnergySchedulerCard extends LitElement {
                 <label for="socLimitType">SOC Condition</label>
                 <select id="socLimitType" @change=${(e: Event) => {
                   const value = (e.target as HTMLSelectElement).value;
-                  const defaultValue = value === 'max' ? '100' : '30';
+                  const defaultValue = value === 'min' ? '30' : '100';
                   this._setFormValue('socLimit', defaultValue);
                   this._setFormText('socLimitValue', `${defaultValue}%`);
                 }}>
+                  <option value="auto">Auto detection</option>
                   <option value="max">Charge to SOC ≥</option>
                   <option value="min">Discharge to SOC ≤</option>
                 </select>
