@@ -29,6 +29,7 @@ from .const import (
     SERVICE_CLEAR_SCHEDULE,
     SERVICE_RUN_OPTIMIZATION,
     SERVICE_SET_SCHEDULE,
+    VERSION,
 )
 from .coordinator import EnergySchedulerCoordinator
 from .storage_manager import ScheduleStorageManager
@@ -151,7 +152,8 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     hass.http.register_view(CardStaticView(www_path))
 
     # Register Lovelace card as frontend module (auto-loads without manual resource adding)
-    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js"
+    # Add version query param to bust Service Worker cache on updates
+    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js?v={VERSION}"
     frontend.add_extra_js_url(hass, card_url)
 
     _LOGGER.debug("Registered Energy Scheduler card")

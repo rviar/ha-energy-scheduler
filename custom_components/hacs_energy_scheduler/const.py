@@ -3,7 +3,7 @@ from typing import Final
 
 DOMAIN: Final = "hacs_energy_scheduler"
 NAME: Final = "HACS Energy Scheduler"
-VERSION: Final = "1.0.0"
+VERSION: Final = "3.0.1"
 
 # Configuration keys
 CONF_PRICE_BUY_SENSOR: Final = "price_buy_sensor"
