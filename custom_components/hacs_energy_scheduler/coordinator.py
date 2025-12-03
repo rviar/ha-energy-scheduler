@@ -371,17 +371,23 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                     if limit_reached:
                         should_apply = False
                         should_revert = self._current_action == action
+                        direction = "discharge" if soc_limit_type == "min" else "charge"
+                        comparison = "<=" if soc_limit_type == "min" else ">="
                         if should_revert:
-                            direction = "discharge" if soc_limit_type == "min" else "charge"
-                            comparison = "<=" if soc_limit_type == "min" else ">="
                             _LOGGER.info(
                                 "SOC %s limit reached (%s%% %s %s%%), reverting to default mode",
                                 direction, current_soc, comparison, soc_limit
                             )
-                            # Clear lock when target reached
-                            schedule_key = f"{date_key}_{current_hour}"
-                            if hasattr(self, "_locked_soc_types"):
-                                self._locked_soc_types.pop(schedule_key, None)
+                        else:
+                            # Target already reached before action started - skip
+                            _LOGGER.debug(
+                                "SOC %s target already reached (%s%% %s %s%%), skipping action",
+                                direction, current_soc, comparison, soc_limit
+                            )
+                        # Clear lock when target reached
+                        schedule_key = f"{date_key}_{current_hour}"
+                        if hasattr(self, "_locked_soc_types"):
+                            self._locked_soc_types.pop(schedule_key, None)
 
             # Check minutes limit (> instead of >= to include the target minute)
             if minutes is not None and not full_hour:
