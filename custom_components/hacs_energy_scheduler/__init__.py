@@ -30,7 +30,6 @@ from .const import (
     SERVICE_CLEAR_SCHEDULE,
     SERVICE_RUN_OPTIMIZATION,
     SERVICE_SET_SCHEDULE,
-    VERSION,
 )
 from .coordinator import EnergySchedulerCoordinator
 from .storage_manager import ScheduleStorageManager
@@ -159,12 +158,15 @@ async def _async_register_card(hass: HomeAssistant) -> None:
 
     _LOGGER.debug("Card static path: %s, exists: %s", www_path, www_path.exists())
 
-    # Register static file view to serve card JS
-    hass.http.register_view(CardStaticView(www_path))
-
-    # Use file hash for cache busting - guarantees fresh load on any file change
+    # Use file hash in filename for aggressive cache busting
+    # This defeats even the most aggressive Service Worker caching
     file_hash = _get_file_hash(card_file)
-    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js?v={VERSION}&h={file_hash}"
+
+    # Register static file view to serve card JS
+    hass.http.register_view(CardStaticView(www_path, file_hash))
+
+    # Hash in filename ensures unique URL on every file change
+    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card-{file_hash}.js"
     frontend.add_extra_js_url(hass, card_url)
 
     _LOGGER.debug("Registered Energy Scheduler card with hash: %s", file_hash)
@@ -177,21 +179,28 @@ class CardStaticView(HomeAssistantView):
     name = f"api:{DOMAIN}:static"
     requires_auth = False  # Card JS must load without auth
 
-    def __init__(self, www_path: Path) -> None:
+    def __init__(self, www_path: Path, file_hash: str) -> None:
         """Initialize the static view."""
         self._www_path = www_path
+        self._file_hash = file_hash
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Handle GET request for static files."""
         _LOGGER.debug("Card JS requested: %s", filename)
 
+        # Accept hashed filename (energy-scheduler-card-{hash}.js)
+        # and map it to actual file (energy-scheduler-card.js)
+        actual_filename = filename
+        if filename == f"energy-scheduler-card-{self._file_hash}.js":
+            actual_filename = "energy-scheduler-card.js"
+
         # Security: only allow specific files
         allowed_files = {"energy-scheduler-card.js"}
-        if filename not in allowed_files:
+        if actual_filename not in allowed_files:
             _LOGGER.warning("Blocked request for non-allowed file: %s", filename)
             return web.Response(status=404)
 
-        file_path = self._www_path / filename
+        file_path = self._www_path / actual_filename
         if not file_path.exists():
             _LOGGER.error("Static file not found: %s", file_path)
             return web.Response(status=404)
