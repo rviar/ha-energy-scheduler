@@ -1,6 +1,7 @@
 """HACS Energy Scheduler integration for Home Assistant."""
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -141,22 +142,32 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+def _get_file_hash(file_path: Path) -> str:
+    """Calculate MD5 hash of a file for cache busting."""
+    if not file_path.exists():
+        return "unknown"
+    md5 = hashlib.md5()
+    md5.update(file_path.read_bytes())
+    return md5.hexdigest()[:8]  # First 8 chars is enough
+
+
 async def _async_register_card(hass: HomeAssistant) -> None:
     """Register the Lovelace card."""
     # Path to www folder inside custom_components
     www_path = Path(__file__).parent / "www"
+    card_file = www_path / "energy-scheduler-card.js"
 
     _LOGGER.debug("Card static path: %s, exists: %s", www_path, www_path.exists())
 
     # Register static file view to serve card JS
     hass.http.register_view(CardStaticView(www_path))
 
-    # Register Lovelace card as frontend module (auto-loads without manual resource adding)
-    # Add version query param to bust Service Worker cache on updates
-    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js?v={VERSION}"
+    # Use file hash for cache busting - guarantees fresh load on any file change
+    file_hash = _get_file_hash(card_file)
+    card_url = f"{STATIC_URL_PATH}/energy-scheduler-card.js?v={VERSION}&h={file_hash}"
     frontend.add_extra_js_url(hass, card_url)
 
-    _LOGGER.debug("Registered Energy Scheduler card")
+    _LOGGER.debug("Registered Energy Scheduler card with hash: %s", file_hash)
 
 
 class CardStaticView(HomeAssistantView):

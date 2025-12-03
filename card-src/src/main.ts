@@ -6,7 +6,7 @@
 import { EnergySchedulerCard } from './components/energy-scheduler-card';
 import { EnergySchedulerCardEditor } from './components/energy-scheduler-card-editor';
 
-const CARD_VERSION = '2.0.0';
+const CARD_VERSION = '3.0.3';
 const CARD_TYPE = 'energy-scheduler-card';
 const EDITOR_TYPE = 'energy-scheduler-card-editor';
 
@@ -56,12 +56,15 @@ console.info(
 );
 
 // Monitor for registry clearing (handles HA frontend reload)
-let registryCheckInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
-  if (!customElements.get(CARD_TYPE) && window.EnergySchedulerCard) {
-    console.warn('[Energy Scheduler] Registry cleared, re-registering...');
-    registerElements();
-  }
-}, 50);
+let registryCheckInterval: ReturnType<typeof setInterval> | null = setInterval(
+  () => {
+    if (!customElements.get(CARD_TYPE) && window.EnergySchedulerCard) {
+      console.warn('[Energy Scheduler] Registry cleared, re-registering...');
+      registerElements();
+    }
+  },
+  50
+);
 
 // Stop monitoring after 2 seconds
 setTimeout(() => {
