@@ -272,12 +272,16 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
         current_minute = local_now.minute
         date_key = current_date  # Used for locked_soc_types key
 
-        # Clean up stale SOC direction locks (from previous hours/days)
+        # Clean up stale SOC locks (from previous hours/days)
+        current_key = f"{current_date}_{current_hour}"
         if hasattr(self, "_locked_soc_types"):
-            current_key = f"{current_date}_{current_hour}"
             stale_keys = [k for k in self._locked_soc_types if k != current_key]
             for k in stale_keys:
                 del self._locked_soc_types[k]
+        if hasattr(self, "_soc_target_completed"):
+            stale_keys = [k for k in self._soc_target_completed if k != current_key]
+            for k in stale_keys:
+                del self._soc_target_completed[k]
 
         # Sync current action with actual inverter state (handles external changes)
         actual_mode = self._get_current_inverter_mode()
@@ -320,14 +324,26 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
             if soc_limit is not None and self.soc_sensor and not ev_charging:
                 current_soc = self._get_current_soc()
                 soc_limit_type = hour_schedule.get("soc_limit_type")
+                schedule_key = f"{date_key}_{current_hour}"
 
-                if current_soc is not None:
+                # Initialize lock storage if needed
+                if not hasattr(self, "_soc_target_completed"):
+                    self._soc_target_completed = {}
+
+                # Check if target was already completed this hour - skip entirely
+                if self._soc_target_completed.get(schedule_key):
+                    should_apply = False
+                    _LOGGER.debug(
+                        "SOC target already completed for %s, skipping",
+                        schedule_key
+                    )
+                elif current_soc is not None:
                     # Auto-detect direction if not specified or set to "auto"
-                    # Direction is locked on first detection to prevent ping-pong
                     if soc_limit_type is None or soc_limit_type == "auto":
                         # Check if we already locked direction for this schedule entry
-                        schedule_key = f"{date_key}_{current_hour}"
-                        locked_type = getattr(self, "_locked_soc_types", {}).get(schedule_key)
+                        if not hasattr(self, "_locked_soc_types"):
+                            self._locked_soc_types = {}
+                        locked_type = self._locked_soc_types.get(schedule_key)
 
                         if locked_type:
                             # Use previously locked direction
@@ -343,6 +359,7 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                             else:
                                 # Within hysteresis band - already close to target
                                 should_apply = False
+                                self._soc_target_completed[schedule_key] = True
                                 should_revert = self._current_action == action
                                 if should_revert:
                                     _LOGGER.info(
@@ -352,8 +369,6 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                                 soc_limit_type = "max"  # Fallback, won't be used
 
                             # Lock the detected direction for this hour
-                            if not hasattr(self, "_locked_soc_types"):
-                                self._locked_soc_types = {}
                             self._locked_soc_types[schedule_key] = soc_limit_type
                             _LOGGER.debug(
                                 "Auto-detected SOC direction for %s: %s (current=%s%%, target=%s%%)",
@@ -370,6 +385,8 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
 
                     if limit_reached:
                         should_apply = False
+                        # Mark as completed to prevent ping-pong
+                        self._soc_target_completed[schedule_key] = True
                         should_revert = self._current_action == action
                         direction = "discharge" if soc_limit_type == "min" else "charge"
                         comparison = "<=" if soc_limit_type == "min" else ">="
@@ -384,10 +401,6 @@ class EnergySchedulerCoordinator(DataUpdateCoordinator):
                                 "SOC %s target already reached (%s%% %s %s%%), skipping action",
                                 direction, current_soc, comparison, soc_limit
                             )
-                        # Clear lock when target reached
-                        schedule_key = f"{date_key}_{current_hour}"
-                        if hasattr(self, "_locked_soc_types"):
-                            self._locked_soc_types.pop(schedule_key, None)
 
             # Check minutes limit (> instead of >= to include the target minute)
             if minutes is not None and not full_hour:
