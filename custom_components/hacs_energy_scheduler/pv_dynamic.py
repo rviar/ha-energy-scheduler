@@ -218,15 +218,33 @@ async def compute_today_factor(
     current_hour = today_dt.hour
     baseline_elapsed = 0.0
     p50_elapsed = 0.0
+    included_hours: list[int] = []
+    excluded_hours: list[int] = []
     for entry in full_today:
         if entry["date"] != today_str:
             continue
         if entry["hour"] >= current_hour:
             continue  # only fully-elapsed hours
         if pv_on_hours is not None and entry["hour"] not in pv_on_hours:
+            if (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0:
+                excluded_hours.append(entry["hour"])
             continue
         baseline_elapsed += baseline_kwh(entry)
         p50_elapsed += float(entry.get("kwh", 0.0) or 0.0)
+        if (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0:
+            included_hours.append(entry["hour"])
+
+    if pv_on_hours is None:
+        on_hours_label = "all (switch unconfigured or recorder unavailable)"
+    else:
+        on_hours_label = f"{sorted(pv_on_hours)} (from switch history)"
+    _LOGGER.debug(
+        "PV dynamic inputs: actual=%.2f kWh, P50_elapsed=%.2f kWh, "
+        "baseline_elapsed=%.2f kWh, included_solar_hours=%s, "
+        "excluded_solar_hours=%s, pv_on_hours=%s",
+        actual, p50_elapsed, baseline_elapsed,
+        included_hours, excluded_hours, on_hours_label,
+    )
 
     if p50_elapsed < PV_DYNAMIC_THRESHOLD_KWH or baseline_elapsed <= 0:
         return {
