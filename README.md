@@ -3,6 +3,8 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/release/rviar/ha-energy-scheduler.svg)](https://github.com/rviar/ha-energy-scheduler/releases)
 
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
 Home Assistant integration for hour-by-hour battery, PV, grid, and EV scheduling based on electricity prices.
 
 It can work in two modes:
@@ -447,20 +449,21 @@ Stops manual EV charging.
 
 ## Automation Modes
 
-The integration supports these optimization intervals:
+The integration has two optimization modes, configurable from the card:
 
-- `manual`
-- `hourly`
-- `6h`
-- `daily`
-- `reactive`
+- **`auto`** (default) — optimization re-runs automatically on:
+  - price data updates (e.g. Nord Pool publishes tomorrow's prices)
+  - PV forecast changes > 10% over the 36h horizon
+  - battery SOC changes ≥ 5%
+  - EV SOC changes ≥ 5%
+  - EV connect/disconnect
+  - 1-hour fallback timer (guarantees the schedule is never older than an hour even if no event fires)
 
-`reactive` mode can re-run optimization when:
-- prices change
-- PV forecast changes materially
-- battery SOC changes materially
-- EV SOC changes materially
-- EV connected state changes
+  A 60-second debounce prevents event storms from triggering multiple back-to-back runs.
+
+- **`manual`** — no automatic runs. Trigger optimization yourself via the `hacs_energy_scheduler.run_optimization` service (useful when driving the integration from your own automations).
+
+Most users should leave this on `auto`.
 
 ## Manual vs Optimized Hours
 
