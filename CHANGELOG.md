@@ -6,13 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.0] — 2026-05-09
+
 ### Changed
 
-- **Optimization modes collapsed to `auto` / `manual`.** Removed `hourly`, `6h`, `daily`, and `reactive`. New `auto` mode combines all reactive event listeners (price, PV forecast, battery SOC, EV SOC, EV connect/disconnect) with a 1-hour fallback timer — strictly better coverage than any old mode. `manual` is preserved for power users driving the integration via the `run_optimization` service. Anything else in stored config is transparently treated as `auto` at read time. Card dropdown now shows two options.
+- **Optimization modes collapsed to `auto` / `manual`.** Removed `hourly`, `6h`, `daily`, and `reactive`. New `auto` mode combines all reactive event listeners (price, PV forecast, battery SOC, EV SOC, EV connect/disconnect) with a 1-hour fallback timer — strictly better coverage than any old mode. `manual` is preserved for power users driving the integration via the `run_optimization` service. Anything else in stored config is transparently treated as `auto` at read time. Card dropdowns (control-tab and schedule-tab) now show two options.
 
 ### Added
 
 - Debug log line `PV dynamic inputs: actual=… P50_elapsed=… baseline_elapsed=… included_solar_hours=… excluded_solar_hours=… pv_on_hours=…` exposes the exact inputs to the dynamic-confidence calculation, including which hours were dropped because the PV-input switch was OFF (paid-import / negative-price grid charge) and whether the source was switch history or the no-switch fallback.
+
+### Notes
+
+- No migration needed. Existing configs with old interval values are silently mapped to `auto`.
+- Two card pickers now stay in sync (the schedule-tab one was missed in the initial collapse and updated in a follow-up).
 
 ## [4.6.1] — 2026-05-09
 
@@ -87,6 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.1...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...HEAD
+[4.7.0]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.1...v4.7.0
 [4.6.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.0...v4.6.1
 [4.6.0]: https://github.com/rviar/ha-energy-scheduler/releases/tag/v4.6.0
