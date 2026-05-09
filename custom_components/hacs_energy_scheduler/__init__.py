@@ -46,7 +46,7 @@ from .const import (
     DEFAULT_EV_MIN_CHARGE_AMPS,
     DEFAULT_MIN_SELL_PRICE,
     DOMAIN,
-    OPTIMIZE_INTERVAL_EVERY_6H,
+    OPTIMIZE_INTERVAL_AUTO,
     OPTIMIZE_INTERVAL_MANUAL,
     SERVICE_APPLY_MODE,
     SERVICE_CLEAR_SCHEDULE,
@@ -108,12 +108,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 
 def _normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
-    """Normalize runtime optimization settings into interval-only mode."""
+    """Normalize runtime optimization settings to AUTO/MANUAL."""
     normalized = dict(config)
-    interval = normalized.get(CONF_OPTIMIZE_INTERVAL, OPTIMIZE_INTERVAL_MANUAL)
-    if interval == "every_6h":
-        interval = OPTIMIZE_INTERVAL_EVERY_6H
-
+    interval = normalized.get(CONF_OPTIMIZE_INTERVAL, OPTIMIZE_INTERVAL_AUTO)
+    if interval not in (OPTIMIZE_INTERVAL_AUTO, OPTIMIZE_INTERVAL_MANUAL):
+        interval = OPTIMIZE_INTERVAL_AUTO
     normalized[CONF_OPTIMIZE_INTERVAL] = interval
     return normalized
 

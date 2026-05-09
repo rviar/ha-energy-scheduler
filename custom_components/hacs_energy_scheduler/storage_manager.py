@@ -10,7 +10,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    OPTIMIZE_INTERVAL_EVERY_6H,
+    OPTIMIZE_INTERVAL_AUTO,
     OPTIMIZE_INTERVAL_MANUAL,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -29,7 +29,7 @@ class ScheduleStorageManager:
         self._data: dict[str, dict[str, dict[str, Any]]] = {}
         self._state: dict[str, Any] = {
             "paused": False,
-            "optimize_interval": OPTIMIZE_INTERVAL_MANUAL,
+            "optimize_interval": OPTIMIZE_INTERVAL_AUTO,
         }
 
     def _get_stats(self) -> tuple[int, int]:
@@ -45,7 +45,7 @@ class ScheduleStorageManager:
             self._data = {}
             self._state = {
                 "paused": False,
-                "optimize_interval": OPTIMIZE_INTERVAL_MANUAL,
+                "optimize_interval": OPTIMIZE_INTERVAL_AUTO,
             }
         elif isinstance(data, dict) and "schedule" in data:
             self._data = data.get("schedule", {})
@@ -54,7 +54,7 @@ class ScheduleStorageManager:
                 "paused": bool(raw_state.get("paused", False)),
                 "optimize_interval": raw_state.get(
                     "optimize_interval",
-                    OPTIMIZE_INTERVAL_MANUAL,
+                    OPTIMIZE_INTERVAL_AUTO,
                 ),
             }
         else:
@@ -62,7 +62,7 @@ class ScheduleStorageManager:
             self._data = data
             self._state = {
                 "paused": False,
-                "optimize_interval": OPTIMIZE_INTERVAL_MANUAL,
+                "optimize_interval": OPTIMIZE_INTERVAL_AUTO,
             }
         date_count, hour_count = self._get_stats()
         _LOGGER.debug(
@@ -96,12 +96,12 @@ class ScheduleStorageManager:
         return bool(self._state.get("paused", False))
 
     def get_optimize_interval(self) -> str:
-        """Return the persisted optimization interval."""
+        """Return the persisted optimization interval (AUTO or MANUAL)."""
         interval = str(
-            self._state.get("optimize_interval", OPTIMIZE_INTERVAL_MANUAL)
+            self._state.get("optimize_interval", OPTIMIZE_INTERVAL_AUTO)
         )
-        if interval == "every_6h":
-            return OPTIMIZE_INTERVAL_EVERY_6H
+        if interval not in (OPTIMIZE_INTERVAL_AUTO, OPTIMIZE_INTERVAL_MANUAL):
+            return OPTIMIZE_INTERVAL_AUTO
         return interval
 
     async def async_set_paused(self, paused: bool) -> None:

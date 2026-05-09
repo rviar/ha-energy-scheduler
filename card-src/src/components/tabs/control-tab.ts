@@ -112,7 +112,8 @@ export class EsControlTab extends LitElement {
   }
 
   private _renderSystem() {
-    const interval = this.integrationConfig?.optimize_interval ?? 'manual';
+    const rawInterval = this.integrationConfig?.optimize_interval ?? 'auto';
+    const interval = rawInterval === 'manual' ? 'manual' : 'auto';
     const paused = this.data?.paused ?? false;
 
     return html`
@@ -121,11 +122,8 @@ export class EsControlTab extends LitElement {
         <div class="control-row">
           <label>Optimization Mode</label>
           <select .value=${interval} @change=${this._handleIntervalChange}>
+            <option value="auto" ?selected=${interval === 'auto'}>Auto (reactive + 1h fallback)</option>
             <option value="manual" ?selected=${interval === 'manual'}>Manual</option>
-            <option value="hourly" ?selected=${interval === 'hourly'}>Hourly</option>
-            <option value="6h" ?selected=${interval === '6h'}>Every 6h</option>
-            <option value="daily" ?selected=${interval === 'daily'}>Daily</option>
-            <option value="reactive" ?selected=${interval === 'reactive'}>Reactive</option>
           </select>
         </div>
         <div class="control-row">

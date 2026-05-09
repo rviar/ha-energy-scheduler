@@ -73,11 +73,12 @@ CONF_EV_CHARGER_CONSUMPTION_SENSOR: Final = "ev_charger_consumption_sensor"
 CONF_OPTIMIZE_INTERVAL: Final = "optimize_interval"
 
 # Optimize interval options
+# AUTO combines reactive event listeners (price/PV/SOC/EV) with a 1h
+# fallback so the schedule is never older than an hour even if no event
+# fires. MANUAL disables auto-runs entirely — caller triggers via the
+# run_optimization service.
+OPTIMIZE_INTERVAL_AUTO: Final = "auto"
 OPTIMIZE_INTERVAL_MANUAL: Final = "manual"
-OPTIMIZE_INTERVAL_HOURLY: Final = "hourly"
-OPTIMIZE_INTERVAL_EVERY_6H: Final = "6h"
-OPTIMIZE_INTERVAL_DAILY: Final = "daily"
-OPTIMIZE_INTERVAL_REACTIVE: Final = "reactive"
 
 # Default values for optimizer
 DEFAULT_BATTERY_MIN_SOC: Final = 20

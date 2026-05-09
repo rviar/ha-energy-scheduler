@@ -42,11 +42,8 @@ from .const import (
     DEFAULT_BREAKER_POWER_LIMIT,
     DOMAIN,
     EVENT_SCHEDULE_UPDATED,
-    OPTIMIZE_INTERVAL_DAILY,
-    OPTIMIZE_INTERVAL_EVERY_6H,
-    OPTIMIZE_INTERVAL_HOURLY,
+    OPTIMIZE_INTERVAL_AUTO,
     OPTIMIZE_INTERVAL_MANUAL,
-    OPTIMIZE_INTERVAL_REACTIVE,
     SCHEDULER_INTERVAL,
 )
 from .consumption_history import ConsumptionProfileManager
@@ -225,8 +222,11 @@ class EnergySchedulerCoordinator(ScheduleExecutorMixin, DataUpdateCoordinator):
 
     @property
     def optimize_interval(self) -> str:
-        """Return the optimization interval."""
-        return self._config.get(CONF_OPTIMIZE_INTERVAL, "manual")
+        """Return the optimization interval (AUTO or MANUAL)."""
+        raw = self._config.get(CONF_OPTIMIZE_INTERVAL, OPTIMIZE_INTERVAL_AUTO)
+        if raw not in (OPTIMIZE_INTERVAL_AUTO, OPTIMIZE_INTERVAL_MANUAL):
+            return OPTIMIZE_INTERVAL_AUTO
+        return raw
 
     @property
     def paused(self) -> bool:
@@ -309,24 +309,19 @@ class EnergySchedulerCoordinator(ScheduleExecutorMixin, DataUpdateCoordinator):
         await self.async_request_refresh()
 
     async def async_set_optimize_interval(self, interval: str) -> None:
-        """Change optimization interval at runtime."""
+        """Change optimization interval at runtime. Accepts AUTO or MANUAL."""
+        if interval not in (OPTIMIZE_INTERVAL_AUTO, OPTIMIZE_INTERVAL_MANUAL):
+            interval = OPTIMIZE_INTERVAL_AUTO
         self._config[CONF_OPTIMIZE_INTERVAL] = interval
         await self._storage.async_set_optimize_interval(interval)
+
+        # Tear down all auto-related subscriptions, then re-setup based on
+        # the new mode. Single source of truth for what runs in each mode.
         if self._unsub_optimize_interval:
             self._unsub_optimize_interval()
             self._unsub_optimize_interval = None
-        if interval != OPTIMIZE_INTERVAL_REACTIVE:
-            self._cancel_reactive_listeners()
+        self._cancel_reactive_listeners()
         await self._async_setup_auto_optimization()
-        # Set up reactive triggers if switching to reactive mode
-        if interval == OPTIMIZE_INTERVAL_REACTIVE:
-            await self._async_setup_reactive_triggers()
-            if not self._unsub_reactive_fallback:
-                self._unsub_reactive_fallback = async_track_time_interval(
-                    self.hass,
-                    self._async_run_scheduled_optimization,
-                    timedelta(hours=3),
-                )
         _LOGGER.info("Optimization interval changed to: %s", interval)
 
     def _cancel_reactive_listeners(self) -> None:
@@ -451,16 +446,8 @@ class EnergySchedulerCoordinator(ScheduleExecutorMixin, DataUpdateCoordinator):
                     EVENT_HOMEASSISTANT_STARTED, _on_ha_started
                 )
 
-        # Set up reactive triggers if enabled
-        if self.optimize_interval == OPTIMIZE_INTERVAL_REACTIVE:
-            await self._async_setup_reactive_triggers()
-            # Periodic fallback: re-optimize every 6h even in reactive mode
-            self._unsub_reactive_fallback = async_track_time_interval(
-                self.hass,
-                self._async_run_scheduled_optimization,
-                timedelta(hours=3),
-            )
-            _LOGGER.info("Reactive mode: periodic fallback every 3h configured")
+        # Reactive listeners + 1h fallback timer are set up by
+        # _async_setup_auto_optimization() above when mode is AUTO.
 
         # Set up breaker protection listener (event-driven)
         await self._async_setup_breaker_listener()
@@ -503,32 +490,33 @@ class EnergySchedulerCoordinator(ScheduleExecutorMixin, DataUpdateCoordinator):
                     pass
 
     async def _async_setup_auto_optimization(self) -> None:
-        """Set up automatic optimization based on interval setting."""
+        """Set up automatic optimization for the current mode.
+
+        AUTO mode: reactive event listeners (price/PV/SOC/EV) + 1h fallback
+        timer. Reactive listeners catch meaningful state changes within
+        seconds; the fallback guarantees the schedule is never staler than
+        an hour even if no event fires.
+
+        MANUAL mode: nothing scheduled. Caller triggers via the
+        run_optimization service.
+        """
         if self._unsub_optimize_interval:
             self._unsub_optimize_interval()
             self._unsub_optimize_interval = None
 
         if not self.auto_optimize:
-            _LOGGER.debug("Auto-optimization disabled")
-            return
-
-        interval = self.optimize_interval
-        if interval == OPTIMIZE_INTERVAL_HOURLY:
-            delta = timedelta(hours=1)
-        elif interval == OPTIMIZE_INTERVAL_EVERY_6H:
-            delta = timedelta(hours=6)
-        elif interval == OPTIMIZE_INTERVAL_DAILY:
-            delta = timedelta(hours=24)
-        else:
             _LOGGER.debug("Manual optimization mode, no auto-schedule")
             return
 
+        await self._async_setup_reactive_triggers()
         self._unsub_optimize_interval = async_track_time_interval(
             self.hass,
             self._async_run_scheduled_optimization,
-            delta,
+            timedelta(hours=1),
         )
-        _LOGGER.info("Auto-optimization enabled with interval: %s", interval)
+        _LOGGER.info(
+            "Auto-optimization enabled (reactive triggers + 1h fallback)"
+        )
 
     async def _async_setup_reactive_triggers(self) -> None:
         """Set up event-driven optimization triggers (R4)."""
