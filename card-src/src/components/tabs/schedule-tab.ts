@@ -407,7 +407,8 @@ export class EsScheduleTab extends LitElement {
 
     let currentDate: string | null = null;
 
-    const interval = this.integrationConfig?.optimize_interval ?? 'manual';
+    const rawInterval = this.integrationConfig?.optimize_interval ?? 'auto';
+    const normalizedInterval = rawInterval === 'manual' ? 'manual' : 'auto';
     const paused = this.data?.paused ?? false;
     const modes: string[] = this.data?.inverter_modes ?? [];
 
@@ -438,12 +439,9 @@ export class EsScheduleTab extends LitElement {
           </button>
         </div>
         <div class="controls-bar">
-          <select class="controls-select" .value=${interval} @change=${this._handleIntervalChange}>
-            <option value="manual" ?selected=${interval === 'manual'}>Manual</option>
-            <option value="hourly" ?selected=${interval === 'hourly'}>Hourly</option>
-            <option value="6h" ?selected=${interval === '6h'}>Every 6h</option>
-            <option value="daily" ?selected=${interval === 'daily'}>Daily</option>
-            <option value="reactive" ?selected=${interval === 'reactive'}>Reactive</option>
+          <select class="controls-select" .value=${normalizedInterval} @change=${this._handleIntervalChange}>
+            <option value="auto" ?selected=${normalizedInterval === 'auto'}>Auto</option>
+            <option value="manual" ?selected=${normalizedInterval === 'manual'}>Manual</option>
           </select>
           ${modes.length > 0 ? html`
             <select class="controls-select" @change=${this._handleInverterChange}>
