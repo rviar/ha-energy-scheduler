@@ -210,9 +210,14 @@ async def compute_today_factor(
 
     pv_on_hours = await _get_pv_input_on_hours(hass, pv_input_switch, today_dt)
 
-    # Sum baseline for past hours of today where PV was actually on
+    # Sum baseline (denominator of the factor) and raw P50 (activation gate)
+    # for past hours of today where PV was actually on. Activation is gated on
+    # raw P50 so the threshold timing doesn't depend on Solcast confidence —
+    # otherwise low-confidence days (small baseline) would activate dynamics
+    # very late, exactly when the correction is most needed.
     current_hour = today_dt.hour
     baseline_elapsed = 0.0
+    p50_elapsed = 0.0
     for entry in full_today:
         if entry["date"] != today_str:
             continue
@@ -221,8 +226,9 @@ async def compute_today_factor(
         if pv_on_hours is not None and entry["hour"] not in pv_on_hours:
             continue
         baseline_elapsed += baseline_kwh(entry)
+        p50_elapsed += float(entry.get("kwh", 0.0) or 0.0)
 
-    if baseline_elapsed < PV_DYNAMIC_THRESHOLD_KWH:
+    if p50_elapsed < PV_DYNAMIC_THRESHOLD_KWH or baseline_elapsed <= 0:
         return {
             "factor": 1.0,
             "active": False,
