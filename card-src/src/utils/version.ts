@@ -5,4 +5,4 @@
  * diverge (e.g. after an update when the browser is still running a stale
  * cached bundle).
  */
-export const CARD_VERSION = '4.6.0';
+export const CARD_VERSION = '4.6.1';
