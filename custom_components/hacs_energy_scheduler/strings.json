@@ -1,0 +1,265 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HACS Energy Scheduler",
+        "description": "Configure the energy scheduler integration. Select the sensors for energy prices and the inverter mode entity.",
+        "data": {
+          "price_buy_sensor": "Buy Price Sensor",
+          "price_sell_sensor": "Sell Price Sensor",
+          "inverter_mode_entity": "Inverter Mode Entity",
+          "ev_stop_condition": "EV Stop Condition"
+        },
+        "data_description": {
+          "price_buy_sensor": "Sensor providing buy energy prices with 'data' attribute",
+          "price_sell_sensor": "Sensor providing sell energy prices with 'data' attribute",
+          "inverter_mode_entity": "Input select entity controlling inverter modes",
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
+        }
+      },
+      "default_mode": {
+        "title": "Default Mode",
+        "description": "Select the primary inverter mode used for PV Charge and Self-Consume First actions.",
+        "data": {
+          "default_mode": "Default Mode"
+        },
+        "data_description": {
+          "default_mode": "Fallback operating mode if no Grid Only mode is configured"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found",
+      "invalid_mode": "Invalid mode selected"
+    },
+    "abort": {
+      "already_configured": "Integration is already configured",
+      "no_inverter_modes": "No modes found in the inverter mode entity"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Energy Scheduler Options",
+        "description": "Select a category to configure.",
+        "menu_options": {
+          "basic": "Basic Settings",
+          "battery": "Battery Optimizer",
+          "forecast": "PV Forecast & Consumption",
+          "ev": "Electric Vehicle (EV)",
+          "modes": "Inverter Mode Mapping"
+        }
+      },
+      "basic": {
+        "title": "Basic Settings",
+        "description": "Configure price sensors and inverter entity.",
+        "data": {
+          "price_buy_sensor": "Buy Price Sensor",
+          "price_sell_sensor": "Sell Price Sensor",
+          "inverter_mode_entity": "Inverter Mode Entity",
+          "inverter_export_surplus_switch": "Inverter Export Surplus Switch",
+          "ev_stop_condition": "EV Stop Condition",
+          "currency": "Currency"
+        },
+        "data_description": {
+          "inverter_export_surplus_switch": "Optional switch/input_boolean that enables grid export on your inverter. Turned OFF automatically when the sell price is at or below the Minimum Sell Price, to avoid giving energy away.",
+          "ev_stop_condition": "Condition to trigger stop for EV charging schedules (uses Home Assistant conditions)"
+        }
+      },
+      "battery": {
+        "title": "Battery Optimizer Settings",
+        "description": "Configure battery parameters for the energy optimizer.",
+        "data": {
+          "battery_soc_sensor": "Battery SOC Sensor",
+          "battery_capacity": "Battery Capacity",
+          "battery_min_soc": "Minimum SOC Reserve",
+          "battery_max_charge_power": "Max Charge Power",
+          "battery_max_discharge_power": "Max Discharge Power",
+          "battery_cost": "Battery Cost",
+          "battery_cycles": "Battery Cycle Count",
+          "min_sell_price": "Minimum Sell Price",
+          "min_discharge_energy": "Min Discharge Energy"
+        },
+        "data_description": {
+          "battery_soc_sensor": "Sensor providing battery state of charge (%)",
+          "battery_capacity": "Total battery capacity in kWh",
+          "battery_min_soc": "Never discharge below this SOC level",
+          "battery_max_charge_power": "Maximum charging power from grid",
+          "battery_max_discharge_power": "Maximum discharging power to grid",
+          "battery_cost": "Purchase cost of the battery (for cycle cost calculation)",
+          "battery_cycles": "Expected total battery cycles (for wear calculation)",
+          "min_sell_price": "Don't sell below this price (protects against wear exceeding revenue)",
+          "min_discharge_energy": "Skip discharge slots below this energy amount (avoids unnecessary inverter mode switches)"
+        }
+      },
+      "forecast": {
+        "title": "PV Forecast & Consumption",
+        "description": "Configure solar forecast and consumption settings.",
+        "data": {
+          "pv_forecast_sensor": "PV Forecast Today Sensor",
+          "pv_forecast_tomorrow_sensor": "PV Forecast Tomorrow Sensor",
+          "avg_consumption": "Average Consumption",
+          "max_grid_power": "Max Grid Power",
+          "consumption_sensor": "Consumption Sensor",
+          "ev_charger_consumption_sensor": "EV Charger Sensor (optional)",
+          "pv_production_sensor": "PV Production Today Sensor (optional)",
+          "pv_dynamic_correction_enabled": "Dynamic intra-day PV correction",
+          "pv_confidence_factor": "PV Forecast Confidence"
+        },
+        "data_description": {
+          "pv_forecast_sensor": "Solcast or Forecast.Solar sensor for today's PV production forecast",
+          "pv_forecast_tomorrow_sensor": "Sensor for tomorrow's PV production forecast (enables 48h planning)",
+          "avg_consumption": "Average hourly power consumption of your home (fallback)",
+          "max_grid_power": "Maximum power available from the grid (limits concurrent charging)",
+          "consumption_sensor": "Cumulative kWh sensor for building hourly consumption profile from history",
+          "ev_charger_consumption_sensor": "EV charger energy or power sensor — subtracted from consumption profile to separate home vs EV usage",
+          "pv_production_sensor": "Today-energy sensor (kWh, resets at midnight) used to compare actual PV against the forecast for already-elapsed hours",
+          "pv_dynamic_correction_enabled": "When enabled, the integration scales the remainder of today's forecast by the actual/forecast ratio of past hours (active after ≥2 kWh forecast accumulated)",
+          "pv_confidence_factor": "Manual multiplier on top of the forecast (100% = pass-through). Useful as a fallback for non-Solcast providers or as extra conservatism for tomorrow"
+        }
+      },
+      "ev": {
+        "title": "Electric Vehicle Settings",
+        "description": "Configure EV charging parameters (optional).",
+        "data": {
+          "ev_enabled": "Enable EV Support",
+          "ev_soc_sensor": "EV SOC Sensor",
+          "ev_battery_capacity": "EV Battery Capacity",
+          "ev_max_charge_power": "EV Max Charge Power",
+          "ev_target_soc": "EV Target SOC",
+          "ev_connected_sensor": "EV Connected Sensor",
+          "ev_ready_by": "EV Ready By Time",
+          "priority_home_low_threshold": "Home Battery Low Threshold",
+          "priority_home_high_threshold": "Home Battery High Threshold",
+          "priority_ev_high_threshold": "EV Sufficient Threshold",
+          "ev_charge_entity": "EV Charge Switch (optional)",
+          "ev_amps_entity": "EV Charge Amps Entity (optional)",
+          "ev_max_charge_amps": "EV Max Charge Amps",
+          "ev_voltage": "Grid Voltage"
+        },
+        "data_description": {
+          "ev_enabled": "Enable electric vehicle charging optimization",
+          "ev_soc_sensor": "Sensor providing EV state of charge (%)",
+          "ev_battery_capacity": "Total EV battery capacity",
+          "ev_max_charge_power": "Maximum EV charging power",
+          "ev_target_soc": "Target SOC to charge EV to",
+          "ev_connected_sensor": "Sensor indicating if EV is connected/plugged in",
+          "ev_ready_by": "Time by which EV should be charged (optional)",
+          "priority_home_low_threshold": "Below this SOC, home battery has priority over EV",
+          "priority_home_high_threshold": "Above this SOC, EV can be charged alongside battery",
+          "priority_ev_high_threshold": "Above this SOC, EV is considered sufficiently charged",
+          "ev_charge_entity": "Switch entity to start/stop EV charging (if empty, fallback sensors are created)",
+          "ev_amps_entity": "Number entity to set charging current (if empty, fallback sensor is created)",
+          "ev_max_charge_amps": "Maximum charging current for EV",
+          "ev_voltage": "Grid voltage for power/current conversion"
+        }
+      },
+      "modes": {
+        "title": "Inverter Mode Mapping",
+        "description": "Map optimizer actions to your inverter modes.",
+        "data": {
+          "default_mode": "Default Mode",
+          "mode_charge_battery": "Charge Battery Mode",
+          "mode_charge_ev": "Charge EV Mode",
+          "mode_charge_ev_and_battery": "Charge EV + Battery Mode",
+          "mode_sell": "Sell/Discharge Mode",
+          "mode_sell_solar_only": "Sell Solar Only Mode",
+          "mode_grid_only": "Grid Only Mode",
+          "mode_self_consume": "Self-Consume Mode"
+        },
+        "data_description": {
+          "default_mode": "Primary mode used for PV Charge and Self-Consume First actions",
+          "mode_charge_battery": "Mode for charging battery from grid",
+          "mode_charge_ev": "Mode for charging EV only",
+          "mode_charge_ev_and_battery": "Mode for charging both EV and battery",
+          "mode_sell": "Mode for selling/discharging battery to grid",
+          "mode_sell_solar_only": "Mode for selling only solar production",
+          "mode_grid_only": "Mode to use grid only (don't discharge battery)",
+          "mode_self_consume": "Mode to consume all energy locally (don't export to grid)"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found",
+      "home_low_must_be_less_than_high": "Home low threshold must be less than high threshold"
+    }
+  },
+  "services": {
+    "set_schedule": {
+      "name": "Set Schedule",
+      "description": "Set a scheduled action for a specific hour",
+      "fields": {
+        "date": {
+          "name": "Date",
+          "description": "The date for the schedule (YYYY-MM-DD format)"
+        },
+        "hour": {
+          "name": "Hour",
+          "description": "The hour for the schedule (0-23)"
+        },
+        "action": {
+          "name": "Action",
+          "description": "The action/mode to apply"
+        },
+        "soc_limit": {
+          "name": "SOC Limit",
+          "description": "Target SOC percentage to reach"
+        },
+        "soc_limit_type": {
+          "name": "SOC Limit Type",
+          "description": "auto: detect from current SOC, max: charge up to limit, min: discharge down to limit"
+        },
+        "full_hour": {
+          "name": "Full Hour",
+          "description": "Run action for the entire hour"
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Run action for this many minutes"
+        }
+      }
+    },
+    "clear_schedule": {
+      "name": "Clear Schedule",
+      "description": "Clear scheduled actions",
+      "fields": {
+        "date": {
+          "name": "Date",
+          "description": "The date to clear"
+        },
+        "hour": {
+          "name": "Hour",
+          "description": "The specific hour to clear"
+        }
+      }
+    },
+    "apply_mode": {
+      "name": "Apply Mode",
+      "description": "Immediately apply an inverter mode",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "The mode to apply immediately"
+        }
+      }
+    },
+    "run_optimization": {
+      "name": "Run Optimization",
+      "description": "Analyze prices and PV forecast to create an optimal schedule",
+      "fields": {
+        "hours_ahead": {
+          "name": "Planning Horizon",
+          "description": "Number of hours to plan ahead (12-48)"
+        }
+      }
+    },
+    "ev_charge_now": {
+      "name": "EV Charge Now",
+      "description": "Start manual EV charging at maximum amps"
+    },
+    "ev_charge_stop": {
+      "name": "EV Charge Stop",
+      "description": "Stop manual EV charging"
+    }
+  }
+}
