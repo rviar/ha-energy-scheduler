@@ -5,6 +5,12 @@ production observed today. Combined with the probabilistic baseline (handled
 in pv_forecast.py), this lets the optimizer react when reality diverges from
 the morning forecast.
 
+The factor is computed from per-hour sensor deltas (not from the cumulative
+sensor reading), so we can symmetrically exclude hours where the inverter
+was throttled — either via the PV-input switch (paid-import / negative-price
+grid charge) or via the export switch (curtailment when sell price drops
+below threshold and the battery is already absorbing all it can).
+
 See docs/adr/0001-dynamic-pv-confidence.md for design rationale.
 """
 from __future__ import annotations
@@ -36,11 +42,7 @@ _UNIT_TO_KWH = {
 def _read_actual_today_kwh(
     hass: HomeAssistant, sensor_id: str | None,
 ) -> tuple[float | None, str | None]:
-    """Read today-production sensor and return (kWh, error_reason).
-
-    Returns (None, reason) on any problem so the caller can disable dynamic
-    correction with a clear cause shown in attributes.
-    """
+    """Read today-production sensor and return (kWh, error_reason)."""
     if not sensor_id:
         return None, "no_sensor"
     state = hass.states.get(sensor_id)
@@ -64,20 +66,25 @@ def _read_actual_today_kwh(
     return value * multiplier, None
 
 
-async def _get_pv_input_on_hours(
+def _convert_to_kwh(value: float, unit: str | None) -> float:
+    """Apply unit_of_measurement multiplier (defaults to kWh on unknown)."""
+    multiplier = _UNIT_TO_KWH.get(unit or "kWh", 1.0)
+    return value * multiplier
+
+
+async def _get_switch_on_hours_today(
     hass: HomeAssistant,
-    pv_input_switch: str | None,
+    switch_id: str | None,
     today: datetime,
 ) -> set[int] | None:
-    """Return set of hours today where the PV-input switch was ON majority.
+    """Return set of hours today where the switch was ON for >= half the hour.
 
     Returns:
-        - None if the switch is not configured (caller treats all hours as ON).
-        - Empty set if recorder is unavailable / fails (caller treats all hours
-          as ON via separate fallback).
-        - Otherwise, set of hour ints (0-23) where switch was ON >= half the hour.
+        - None if the switch is not configured or recorder is unavailable
+          (caller treats all hours as ON).
+        - Otherwise, set of hour ints (0-23) where switch was ON >= 30 min.
     """
-    if not pv_input_switch:
+    if not switch_id:
         return None
 
     try:
@@ -86,7 +93,7 @@ async def _get_pv_input_on_hours(
         )
         from homeassistant.components.recorder import get_instance
     except ImportError:
-        _LOGGER.warning("Recorder component not available — assuming PV ON all day")
+        _LOGGER.warning("Recorder not available — assuming %s ON all day", switch_id)
         return None
 
     midnight_local = today.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -96,27 +103,16 @@ async def _get_pv_input_on_hours(
         instance = get_instance(hass)
         history = await instance.async_add_executor_job(
             get_significant_states,
-            hass,
-            midnight_local,
-            end_local,
-            [pv_input_switch],
-            None,
-            True,
-            False,
+            hass, midnight_local, end_local, [switch_id], None, True, False,
         )
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning(
-            "Failed to read history for %s: %s — assuming PV ON",
-            pv_input_switch, err,
-        )
+        _LOGGER.warning("Failed to read history for %s: %s", switch_id, err)
         return None
 
-    states = history.get(pv_input_switch) if history else None
+    states = history.get(switch_id) if history else None
     if not states:
-        # No history means we lack ground truth; let caller fall back.
         return None
 
-    # Build interval list of (start, state) pairs in local time.
     intervals: list[tuple[datetime, str]] = []
     for entry in states:
         last_changed = getattr(entry, "last_changed", None)
@@ -137,7 +133,6 @@ async def _get_pv_input_on_hours(
         if h_start > today:
             break
 
-        # Determine the state at h_start
         state_at_start = "on"
         for ts, st in intervals:
             if ts <= h_start:
@@ -160,32 +155,30 @@ async def _get_pv_input_on_hours(
         if cursor_state == "on":
             on_seconds += (h_end - cursor).total_seconds()
 
-        if on_seconds >= 1800:  # >= 30 min
+        if on_seconds >= 1800:
             on_hours.add(hour)
 
     return on_hours
 
 
-async def _read_actual_at_hour_start(
+async def _read_today_sensor_hourly_deltas(
     hass: HomeAssistant, sensor_id: str, today_dt: datetime,
-) -> tuple[float | None, str]:
-    """Return sensor value at the top of the current hour.
+) -> tuple[dict[int, float] | None, str]:
+    """Return per-hour kWh production for fully-elapsed hours of today.
 
-    Reads HA recorder history to find the most recent sensor state at-or-
-    before `today_dt.replace(minute=0, second=0)`. This gives a numerator
-    that's symmetric with the denominator (which only sums fully-elapsed
-    forecast hours), eliminating the partial-hour bias of comparing
-    cumulative-up-to-now actual against forecast-up-to-last-hour.
+    For each elapsed hour h, computes `value_at(h+1):00 - value_at(h):00`
+    using HA recorder history. This lets the caller sum actual production
+    selectively (e.g. excluding curtailed hours) instead of relying on the
+    cumulative sensor reading.
 
-    Returns (kWh, source_label) where source_label describes which path
-    was taken — used for debug visibility. Returns (None, reason) when
-    the value can't be obtained; caller should fall back to current
-    sensor reading.
+    Returns (dict, source_label). dict maps hour_int -> kWh produced in
+    that hour. Returns (None, reason) when history is unavailable or there
+    are no fully-elapsed hours yet.
     """
-    hour_start = today_dt.replace(minute=0, second=0, microsecond=0)
-    if hour_start == today_dt:
-        # We are exactly at the hour boundary — no need to query history.
-        return None, "at_boundary"
+    midnight = today_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    current_hour_start = today_dt.replace(minute=0, second=0, microsecond=0)
+    if current_hour_start <= midnight:
+        return {}, "no_elapsed_hours"
 
     try:
         from homeassistant.components.recorder.history import (
@@ -195,52 +188,70 @@ async def _read_actual_at_hour_start(
     except ImportError:
         return None, "recorder_unavailable"
 
-    midnight_local = today_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-
     try:
         instance = get_instance(hass)
         history = await instance.async_add_executor_job(
             get_significant_states,
-            hass,
-            midnight_local,
-            hour_start + timedelta(seconds=1),
-            [sensor_id],
-            None,
-            True,
-            False,
+            hass, midnight, current_hour_start + timedelta(seconds=1),
+            [sensor_id], None, True, False,
         )
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning(
-            "Failed to read sensor history for %s: %s", sensor_id, err,
-        )
+        _LOGGER.warning("Failed to read sensor history for %s: %s", sensor_id, err)
         return None, "history_query_failed"
 
     states = history.get(sensor_id) if history else None
     if not states:
         return None, "no_history"
 
-    # Pick the latest state recorded at-or-before hour_start.
-    best_value: float | None = None
+    # Collect (timestamp, value) samples in local TZ. Sensor unit is read
+    # from the most recent state attribute and applied uniformly.
+    unit: str | None = None
+    samples: list[tuple[datetime, float]] = []
     for entry in states:
         last_changed = getattr(entry, "last_changed", None)
         state_value = getattr(entry, "state", None)
         if last_changed is None or state_value is None:
             continue
-        ts = last_changed.astimezone(hour_start.tzinfo)
-        if ts > hour_start:
-            break
         if state_value in (None, "", "unknown", "unavailable"):
             continue
         try:
-            best_value = float(state_value)
+            value = float(state_value)
         except (TypeError, ValueError):
             continue
+        if value < 0:
+            continue
+        if unit is None:
+            attrs = getattr(entry, "attributes", None) or {}
+            unit = attrs.get("unit_of_measurement")
+        samples.append((last_changed.astimezone(midnight.tzinfo), value))
 
-    if best_value is None:
-        return None, "no_valid_value_at_boundary"
-    if best_value < 0:
-        return None, "negative_value_at_boundary"
-    return best_value, "from_history"
+    if not samples:
+        return None, "no_valid_samples"
+
+    samples.sort(key=lambda x: x[0])
+
+    def value_at(target: datetime) -> float | None:
+        result: float | None = None
+        for ts, v in samples:
+            if ts > target:
+                break
+            result = v
+        return result
+
+    deltas: dict[int, float] = {}
+    for h in range(today_dt.hour):
+        h_start = midnight + timedelta(hours=h)
+        h_end = midnight + timedelta(hours=h + 1)
+        v_start = value_at(h_start)
+        v_end = value_at(h_end)
+        if v_start is None or v_end is None:
+            continue
+        # Sensor resets at midnight: hour 0's start may equal yesterday's
+        # final value if the reset hadn't recorded yet. clamp negative.
+        delta = max(0.0, v_end - v_start)
+        deltas[h] = _convert_to_kwh(delta, unit)
+
+    return deltas, "from_history"
 
 
 async def compute_today_factor(
@@ -248,32 +259,23 @@ async def compute_today_factor(
     pv_parser: PVForecastParser,
     pv_production_sensor: str | None,
     pv_input_switch: str | None,
+    export_surplus_switch: str | None = None,
 ) -> dict[str, Any]:
     """Compute intra-day correction factor and observability attributes.
 
     Returns a dict with at minimum:
         - factor: float in [PV_DYNAMIC_FACTOR_MIN, PV_DYNAMIC_FACTOR_MAX]
                   or 1.0 when inactive
-        - active: bool — whether factor should be applied
-        - reason: str — why active/inactive
+        - active: bool
+        - reason: str
         - actual_today_kwh: float | None
         - baseline_elapsed_kwh: float | None
-        - baseline_today_kwh: float | None — total expected for the full day
-        - solcast_confidence: float | None — daily analysis.confidence proxy
+        - baseline_today_kwh: float | None
+        - solcast_confidence: float | None
     """
     actual_now, sensor_err = _read_actual_today_kwh(hass, pv_production_sensor)
     today_dt = dt_util.now()
     today_str = today_dt.strftime("%Y-%m-%d")
-
-    # Use sensor value at top-of-current-hour to be symmetric with the
-    # denominator (which only sums fully-elapsed forecast hours).
-    actual_at_hour: float | None = None
-    actual_source = "current"
-    if actual_now is not None and pv_production_sensor:
-        actual_at_hour, actual_source = await _read_actual_at_hour_start(
-            hass, pv_production_sensor, today_dt,
-        )
-    actual = actual_at_hour if actual_at_hour is not None else actual_now
 
     full_today = pv_parser.get_today_full_forecast()
     baseline_today_total = sum(baseline_kwh(e) for e in full_today)
@@ -284,61 +286,132 @@ async def compute_today_factor(
         sum(daily_confidences) / len(daily_confidences) if daily_confidences else None
     )
 
-    if actual is None:
+    if actual_now is None or not pv_production_sensor:
         return {
             "factor": 1.0,
             "active": False,
             "reason": sensor_err or "no_data",
-            "actual_today_kwh": None,
+            "actual_today_kwh": actual_now,
             "baseline_elapsed_kwh": None,
             "baseline_today_kwh": baseline_today_total or None,
             "solcast_confidence": solcast_confidence,
         }
 
-    pv_on_hours = await _get_pv_input_on_hours(hass, pv_input_switch, today_dt)
+    # Per-hour sensor deltas for fully-elapsed hours. Lets us selectively
+    # sum actual production for "useful" hours only, mirroring the
+    # selective baseline summation below.
+    hour_deltas, deltas_source = await _read_today_sensor_hourly_deltas(
+        hass, pv_production_sensor, today_dt,
+    )
 
-    # Sum baseline (denominator of the factor) and raw P50 (activation gate)
-    # for FULLY-ELAPSED past hours of today where PV was actually on. The
-    # current (in-progress) hour is intentionally excluded from BOTH the
-    # numerator (we read sensor value at top-of-current-hour) and the
-    # denominator. This symmetric exclusion eliminates the partial-hour
-    # bias that would otherwise inflate the factor mid-hour.
+    pv_on_hours = await _get_switch_on_hours_today(
+        hass, pv_input_switch, today_dt,
+    )
+    export_on_hours = await _get_switch_on_hours_today(
+        hass, export_surplus_switch, today_dt,
+    )
+
+    def _hour_useful(h: int) -> tuple[bool, str | None]:
+        """Return (include_in_factor, exclusion_reason).
+
+        A hour is useful when both PV-input and export switches were ON
+        for the majority of that hour. When a switch is not configured,
+        treat as always ON.
+        """
+        if pv_on_hours is not None and h not in pv_on_hours:
+            return False, "pv_off"
+        if export_on_hours is not None and h not in export_on_hours:
+            return False, "export_off"
+        return True, None
+
     current_hour = today_dt.hour
+    actual_sum = 0.0
     baseline_elapsed = 0.0
     p50_elapsed = 0.0
     included_hours: list[int] = []
-    excluded_hours: list[int] = []
+    excluded_pv: list[int] = []
+    excluded_export: list[int] = []
+    missing_history: list[int] = []
+
     for entry in full_today:
         if entry["date"] != today_str:
             continue
-        if entry["hour"] >= current_hour:
+        h = entry["hour"]
+        if h >= current_hour:
             continue  # current hour and future
-        if pv_on_hours is not None and entry["hour"] not in pv_on_hours:
-            if (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0:
-                excluded_hours.append(entry["hour"])
+        useful, reason = _hour_useful(h)
+        has_solar = (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0
+        if not useful:
+            if has_solar:
+                if reason == "pv_off":
+                    excluded_pv.append(h)
+                elif reason == "export_off":
+                    excluded_export.append(h)
             continue
+        # Useful hour: need both forecast (we have it) and actual delta
+        # (from history). If history is missing for this hour, we can't
+        # contribute it to either side without bias — skip it.
+        if hour_deltas is None or h not in hour_deltas:
+            if has_solar:
+                missing_history.append(h)
+            continue
+        actual_sum += hour_deltas[h]
         baseline_elapsed += baseline_kwh(entry)
         p50_elapsed += float(entry.get("kwh", 0.0) or 0.0)
-        if (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0:
-            included_hours.append(entry["hour"])
+        if has_solar:
+            included_hours.append(h)
 
+    # Fallback path: history unavailable AND nothing was excluded by switch
+    # logic. Use cumulative sensor at top-of-current-hour (may carry small
+    # bias from yesterday-rollover edge cases on first install).
+    fallback_used = False
+    if hour_deltas is None and not excluded_pv and not excluded_export:
+        # Approximate: actual_now is cumulative through "now"; we need
+        # through "top of current hour". Without history we can't refine,
+        # so accept the bias and surface it.
+        actual_sum = float(actual_now)
+        # Re-sum baseline for all elapsed solar hours treating switches as ON.
+        baseline_elapsed = 0.0
+        p50_elapsed = 0.0
+        included_hours = []
+        for entry in full_today:
+            if entry["date"] != today_str:
+                continue
+            h = entry["hour"]
+            if h >= current_hour:
+                continue
+            baseline_elapsed += baseline_kwh(entry)
+            p50_elapsed += float(entry.get("kwh", 0.0) or 0.0)
+            if (entry.get("kwh") or 0.0) > 0 or baseline_kwh(entry) > 0:
+                included_hours.append(h)
+        fallback_used = True
+
+    # Build debug labels
     if pv_on_hours is None:
-        on_hours_label = "all (switch unconfigured or recorder unavailable)"
+        pv_label = "all (unconfigured / no history)"
     else:
-        on_hours_label = f"{sorted(pv_on_hours)} (from switch history)"
-    if actual_at_hour is not None:
-        actual_label = (
-            f"{actual:.2f} kWh @ {today_dt:%H}:00 (from history; "
-            f"current sensor: {actual_now:.2f} kWh)"
-        )
+        pv_label = f"{sorted(pv_on_hours)}"
+    if export_on_hours is None:
+        export_label = "all (unconfigured / no history)"
     else:
-        actual_label = f"{actual:.2f} kWh (current sensor; hour-start fallback: {actual_source})"
+        export_label = f"{sorted(export_on_hours)}"
+    deltas_label = (
+        f"{deltas_source}; {len(hour_deltas)} hourly deltas"
+        if hour_deltas is not None else f"unavailable ({deltas_source})"
+    )
+    actual_label = (
+        f"{actual_sum:.2f} kWh "
+        f"({'cumulative-fallback' if fallback_used else 'sum-of-deltas'}; "
+        f"current sensor: {actual_now:.2f} kWh)"
+    )
     _LOGGER.debug(
         "PV dynamic inputs: actual=%s, P50_elapsed=%.2f kWh, "
-        "baseline_elapsed=%.2f kWh, included_solar_hours=%s, "
-        "excluded_solar_hours=%s, pv_on_hours=%s",
+        "baseline_elapsed=%.2f kWh, included_hours=%s, "
+        "excluded_pv_off=%s, excluded_export_off=%s, missing_history=%s, "
+        "pv_on_hours=%s, export_on_hours=%s, sensor_history=%s",
         actual_label, p50_elapsed, baseline_elapsed,
-        included_hours, excluded_hours, on_hours_label,
+        included_hours, excluded_pv, excluded_export, missing_history,
+        pv_label, export_label, deltas_label,
     )
 
     if p50_elapsed < PV_DYNAMIC_THRESHOLD_KWH or baseline_elapsed <= 0:
@@ -346,19 +419,19 @@ async def compute_today_factor(
             "factor": 1.0,
             "active": False,
             "reason": "below_threshold",
-            "actual_today_kwh": actual,
+            "actual_today_kwh": actual_sum,
             "baseline_elapsed_kwh": baseline_elapsed,
             "baseline_today_kwh": baseline_today_total or None,
             "solcast_confidence": solcast_confidence,
         }
 
-    raw = actual / baseline_elapsed
+    raw = actual_sum / baseline_elapsed
     factor = max(PV_DYNAMIC_FACTOR_MIN, min(PV_DYNAMIC_FACTOR_MAX, raw))
     return {
         "factor": factor,
         "active": True,
         "reason": "ok" if raw == factor else "clamped",
-        "actual_today_kwh": actual,
+        "actual_today_kwh": actual_sum,
         "baseline_elapsed_kwh": baseline_elapsed,
         "baseline_today_kwh": baseline_today_total or None,
         "solcast_confidence": solcast_confidence,

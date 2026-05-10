@@ -284,6 +284,7 @@ class EnergySchedulerCoordinator(ScheduleExecutorMixin, DataUpdateCoordinator):
             self._optimizer._pv_parser,
             self.pv_production_sensor,
             self.inverter_pv_input_switch,
+            export_surplus_switch=self.inverter_export_surplus_switch,
         )
         _LOGGER.debug(
             "PV dynamic factor: %.2f (active=%s, reason=%s, actual=%s, baseline=%s)",
