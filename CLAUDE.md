@@ -10,6 +10,12 @@
 
 When the user asks to "сделать релиз" / "release" / "bump version":
 
+### When to release
+
+**Never release without an explicit user request.** Wait for a clear "release", "сделай релиз", "запакуй патчем", "tag X" — anything ambiguous, ask. Don't bump versions, don't tag, and don't run the build-as-release sequence on your own initiative even when changes look "ready". The user controls the release cadence.
+
+The same `git push` rule (no auto-push) applies to the bump/commit/tag steps below — they're all part of "release" and gated on explicit ask.
+
 ### Decide the bump
 
 - **patch** (4.x.Y) — bug fixes only, no UX or API change

@@ -63,6 +63,7 @@ class ConsumptionProfileManager:
             return
 
         try:
+            from homeassistant.components.recorder import get_instance
             from homeassistant.components.recorder.statistics import (
                 statistics_during_period,
             )
@@ -70,12 +71,15 @@ class ConsumptionProfileManager:
             _LOGGER.warning("Recorder component not available for consumption history")
             return
 
+        recorder_instance = get_instance(self.hass)
+
         now = dt_util.now()
         start_time = now - timedelta(days=days_back)
 
         # Query total consumption sensor
         total_profile = await self._query_cumulative_sensor(
-            statistics_during_period, start_time, now, self._sensor,
+            recorder_instance, statistics_during_period,
+            start_time, now, self._sensor,
         )
         if total_profile is None:
             return
@@ -84,7 +88,7 @@ class ConsumptionProfileManager:
         ev_profile: dict[int, dict[int, list[float]]] = {}
         if self._ev_sensor:
             ev_profile = await self._query_ev_sensor(
-                statistics_during_period, start_time, now,
+                recorder_instance, statistics_during_period, start_time, now,
             ) or {}
 
         # Build averaged profiles
@@ -125,18 +129,19 @@ class ConsumptionProfileManager:
         )
 
     async def _query_cumulative_sensor(
-        self, statistics_during_period, start_time, end_time, sensor_id: str,
+        self, recorder_instance, statistics_during_period,
+        start_time, end_time, sensor_id: str,
     ) -> dict[int, dict[int, list[float]]] | None:
         """Query a cumulative (total_increasing) sensor and return hourly deltas."""
         try:
-            stats = await self.hass.async_add_executor_job(
+            stats = await recorder_instance.async_add_executor_job(
                 statistics_during_period,
                 self.hass,
                 start_time,
                 end_time,
                 {sensor_id},
                 "hour",
-                None,
+                {"energy": "kWh"},  # let HA convert Wh/MWh → kWh for us
                 {"sum"},
             )
         except Exception as err:
@@ -178,14 +183,16 @@ class ConsumptionProfileManager:
         return hourly
 
     async def _query_ev_sensor(
-        self, statistics_during_period, start_time, end_time,
+        self, recorder_instance, statistics_during_period, start_time, end_time,
     ) -> dict[int, dict[int, list[float]]] | None:
         """Query EV charger sensor. Supports both energy (sum) and power (mean) sensors."""
         now = dt_util.now()
 
-        # Try cumulative energy sensor first (total_increasing)
+        # Try cumulative energy sensor first (total_increasing).
+        # No `units` filter here because the sensor may be either energy
+        # (kWh, sum) or power (kW, mean) — we detect after the fact.
         try:
-            stats = await self.hass.async_add_executor_job(
+            stats = await recorder_instance.async_add_executor_job(
                 statistics_during_period,
                 self.hass,
                 start_time,

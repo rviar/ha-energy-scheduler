@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.3] — 2026-05-10
+
+### Fixed
+
+- **Recorder executor warning on every optimization run.** The dynamic-confidence factor's hourly-deltas query (added in 4.7.2) was running `statistics_during_period` via the generic `hass.async_add_executor_job` instead of the recorder's own executor. This produced a `Detected code that accesses the database without the database executor` warning at WARNING level on every optimization (~1× per hour minimum). Switched to `get_instance(hass).async_add_executor_job(...)` so the call lands on the recorder thread pool. Same fix applied preemptively to `consumption_history.py` (silent until now because the consumption profile is built rarely, but the same warning would have appeared on first profile build with debug logging).
+
+### Changed
+
+- **Let HA convert sensor units instead of doing it ourselves.** `_read_today_sensor_hourly_deltas` now passes `units={"energy": "kWh"}` to `statistics_during_period`, so HA returns Wh/MWh sensors pre-converted to kWh. Removes a code path that had to inspect `unit_of_measurement` and apply a multiplier table. Same change in `consumption_history._query_cumulative_sensor`. The EV-sensor query still passes `units=None` because the sensor may be either energy (kWh, sum) or power (kW, mean) and is detected after the fact.
+
+### Notes
+
+- No behavior change for end users — factor values, included hours, and produced schedules are unchanged. Only difference visible in HA logs is the absence of the recorder-executor warning.
+- `_convert_to_kwh` helper removed from `pv_dynamic.py` as it became dead code after the `units` parameter switch.
+
 ## [4.7.2] — 2026-05-10
 
 ### Fixed
@@ -106,7 +121,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.3...HEAD
+[4.7.3]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...v4.7.3
 [4.7.2]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...v4.7.2
 [4.7.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.1...v4.7.0

@@ -66,12 +66,6 @@ def _read_actual_today_kwh(
     return value * multiplier, None
 
 
-def _convert_to_kwh(value: float, unit: str | None) -> float:
-    """Apply unit_of_measurement multiplier (defaults to kWh on unknown)."""
-    multiplier = _UNIT_TO_KWH.get(unit or "kWh", 1.0)
-    return value * multiplier
-
-
 async def _get_switch_on_hours_today(
     hass: HomeAssistant,
     switch_id: str | None,
@@ -166,14 +160,16 @@ async def _read_today_sensor_hourly_deltas(
 ) -> tuple[dict[int, float] | None, str]:
     """Return per-hour kWh production for fully-elapsed hours of today.
 
-    For each elapsed hour h, computes `value_at(h+1):00 - value_at(h):00`
-    using HA recorder history. This lets the caller sum actual production
-    selectively (e.g. excluding curtailed hours) instead of relying on the
-    cumulative sensor reading.
+    Uses HA Long-Term Statistics (`statistics_during_period`) which already
+    aggregates `total_increasing` sensors into hourly buckets — same
+    mechanism used by the consumption profile. Returns a dict mapping
+    hour_int -> kWh produced in that hour, or (None, reason) when stats
+    are unavailable / empty.
 
-    Returns (dict, source_label). dict maps hour_int -> kWh produced in
-    that hour. Returns (None, reason) when history is unavailable or there
-    are no fully-elapsed hours yet.
+    Note: statistics are computed every ~5 minutes by default so the most
+    recent hour may not appear immediately after it ends. Acceptable for
+    our use case (we only consume fully-elapsed hours and optimization
+    runs trail hour boundaries by at least a few minutes in practice).
     """
     midnight = today_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     current_hour_start = today_dt.replace(minute=0, second=0, microsecond=0)
@@ -181,77 +177,67 @@ async def _read_today_sensor_hourly_deltas(
         return {}, "no_elapsed_hours"
 
     try:
-        from homeassistant.components.recorder.history import (
-            get_significant_states,
-        )
         from homeassistant.components.recorder import get_instance
+        from homeassistant.components.recorder.statistics import (
+            statistics_during_period,
+        )
     except ImportError:
         return None, "recorder_unavailable"
 
+    # Run on the recorder's own executor — required by HA, otherwise it
+    # logs a "Detected code that accesses the database without the database
+    # executor" warning on every optimization run.
     try:
-        instance = get_instance(hass)
-        history = await instance.async_add_executor_job(
-            get_significant_states,
-            hass, midnight, current_hour_start + timedelta(seconds=1),
-            [sensor_id], None, True, False,
+        stats = await get_instance(hass).async_add_executor_job(
+            statistics_during_period,
+            hass,
+            midnight,
+            current_hour_start + timedelta(seconds=1),
+            {sensor_id},
+            "hour",
+            {"energy": "kWh"},  # let HA convert Wh/MWh → kWh for us
+            {"sum"},
         )
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("Failed to read sensor history for %s: %s", sensor_id, err)
-        return None, "history_query_failed"
+        _LOGGER.warning(
+            "Failed to read sensor statistics for %s: %s", sensor_id, err,
+        )
+        return None, "statistics_query_failed"
 
-    states = history.get(sensor_id) if history else None
-    if not states:
-        return None, "no_history"
+    sensor_stats = (stats.get(sensor_id) if stats else None) or []
+    if len(sensor_stats) < 2:
+        return None, "no_statistics"
 
-    # Collect (timestamp, value) samples in local TZ. Sensor unit is read
-    # from the most recent state attribute and applied uniformly.
-    unit: str | None = None
-    samples: list[tuple[datetime, float]] = []
-    for entry in states:
-        last_changed = getattr(entry, "last_changed", None)
-        state_value = getattr(entry, "state", None)
-        if last_changed is None or state_value is None:
-            continue
-        if state_value in (None, "", "unknown", "unavailable"):
-            continue
-        try:
-            value = float(state_value)
-        except (TypeError, ValueError):
-            continue
-        if value < 0:
-            continue
-        if unit is None:
-            attrs = getattr(entry, "attributes", None) or {}
-            unit = attrs.get("unit_of_measurement")
-        samples.append((last_changed.astimezone(midnight.tzinfo), value))
-
-    if not samples:
-        return None, "no_valid_samples"
-
-    samples.sort(key=lambda x: x[0])
-
-    def value_at(target: datetime) -> float | None:
-        result: float | None = None
-        for ts, v in samples:
-            if ts > target:
-                break
-            result = v
-        return result
-
+    # For total_increasing sensors, each bucket's `sum` is the cumulative
+    # value AT THE END of the bucket period. So `bucket[i].sum −
+    # bucket[i-1].sum` equals production during the hour starting at
+    # `bucket[i].start`. Same labeling convention as consumption_history.py
+    # — verified against the HA Energy Dashboard which renders the same
+    # buckets with the same labels.
     deltas: dict[int, float] = {}
-    for h in range(today_dt.hour):
-        h_start = midnight + timedelta(hours=h)
-        h_end = midnight + timedelta(hours=h + 1)
-        v_start = value_at(h_start)
-        v_end = value_at(h_end)
-        if v_start is None or v_end is None:
+    for i in range(1, len(sensor_stats)):
+        prev_sum = sensor_stats[i - 1].get("sum")
+        curr_sum = sensor_stats[i].get("sum")
+        if prev_sum is None or curr_sum is None:
             continue
-        # Sensor resets at midnight: hour 0's start may equal yesterday's
-        # final value if the reset hadn't recorded yet. clamp negative.
-        delta = max(0.0, v_end - v_start)
-        deltas[h] = _convert_to_kwh(delta, unit)
+        delta = curr_sum - prev_sum
+        if delta < 0:
+            continue
 
-    return deltas, "from_history"
+        start_raw = sensor_stats[i].get("start")
+        if isinstance(start_raw, (int, float)):
+            entry_dt = datetime.fromtimestamp(start_raw, tz=midnight.tzinfo)
+        elif isinstance(start_raw, datetime):
+            entry_dt = start_raw.astimezone(midnight.tzinfo)
+        else:
+            continue
+        if entry_dt.date() != midnight.date():
+            continue
+        deltas[entry_dt.hour] = float(delta)
+
+    if not deltas:
+        return None, "no_hourly_deltas"
+    return deltas, "from_statistics"
 
 
 async def compute_today_factor(
