@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.2] — 2026-05-10
+
 ### Fixed
 
 - **Dynamic-confidence factor was biased low when the export-surplus switch curtailed PV.** When `inverter_export_surplus_switch` is OFF (sell price ≤ minimum) and the battery is already absorbing what it can, the inverter throttles PV output to match local demand — the production sensor records the throttled value, not the meteorological potential. Without accounting for this, the factor concluded "PV is underperforming" and pushed the optimizer toward conservative planning despite Solcast being correct. Fixed by switching the factor computation to **per-hour sensor deltas** (one extra recorder query per optimization run): a fully-elapsed hour contributes to both numerator and denominator only when both `inverter_pv_input_switch` AND `inverter_export_surplus_switch` were ON for the majority of that hour. Falls back to the previous cumulative-sensor approach if recorder is unavailable. The debug log now breaks excluded hours into `excluded_pv_off=…` and `excluded_export_off=…` for visibility.
@@ -104,7 +106,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...HEAD
+[4.7.2]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...v4.7.2
 [4.7.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.1...v4.7.0
 [4.6.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.0...v4.6.1
