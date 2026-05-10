@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dynamic-confidence factor was systematically over-estimated mid-hour.** The numerator (`actual_today_kwh` from the production sensor) included accumulated production from the in-progress hour, but the denominator only summed baseline for fully-elapsed hours. At 10:42 with hour 10 in progress, that meant comparing ~5h42m of actual to 5h of forecast — biasing the factor upward by up to ~30% when partial-hour production was substantial. Now the numerator is read **at the top of the current hour** via HA recorder history, so both sides cover the same fully-elapsed window. Symmetric exclusion, no within-hour interpolation, zero bias from sub-hourly solar curve shape. Falls back to the current sensor reading if recorder is unavailable (only matters on first install / right after midnight reset). The debug log shows the source of the numerator (`from history` vs `current sensor; hour-start fallback: <reason>`) so the path is auditable.
+
 ## [4.7.0] — 2026-05-09
 
 ### Changed
