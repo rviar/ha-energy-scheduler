@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.1] — 2026-05-10
+
 ### Fixed
 
 - **Dynamic-confidence factor was systematically over-estimated mid-hour.** The numerator (`actual_today_kwh` from the production sensor) included accumulated production from the in-progress hour, but the denominator only summed baseline for fully-elapsed hours. At 10:42 with hour 10 in progress, that meant comparing ~5h42m of actual to 5h of forecast — biasing the factor upward by up to ~30% when partial-hour production was substantial. Now the numerator is read **at the top of the current hour** via HA recorder history, so both sides cover the same fully-elapsed window. Symmetric exclusion, no within-hour interpolation, zero bias from sub-hourly solar curve shape. Falls back to the current sensor reading if recorder is unavailable (only matters on first install / right after midnight reset). The debug log shows the source of the numerator (`from history` vs `current sensor; hour-start fallback: <reason>`) so the path is auditable.
@@ -98,7 +100,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...HEAD
+[4.7.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.1...v4.7.0
 [4.6.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.6.0...v4.6.1
 [4.6.0]: https://github.com/rviar/ha-energy-scheduler/releases/tag/v4.6.0
