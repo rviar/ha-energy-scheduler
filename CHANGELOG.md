@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.5] — 2026-05-11
+
+### Fixed
+
+- **Negative profit displayed as `+-X.XX`.** Card status-bar and stats-tab hardcoded a `+` prefix in front of `estimated_profit.toFixed(2)`, producing `+-2.18 PLN` for losing plans. Now the sign is derived from the value: positive shows `+`, negative shows the natural `-` from `toFixed`, zero shows no sign.
+- **Micro-export filter wiped valuable home-supply slots.** When DP planned a small discharge dominated by battery-to-home flow (e.g. expensive morning hour with PV ≈ 0: `battery=0.30 kWh, to_home=0.24 kWh, to_grid=0.06 kWh`), the post-processing filter saw `planned_energy_kwh < min_discharge_energy` and removed the slot entirely. With nowhere else to land — R6's SCF/SCO logic gates on `sell < min_sell_price` AND `pv > 0.1`, neither of which applied to the morning case — the hour fell into IDL, the inverter went to Grid Only, and the home bought from the grid at the peak price. Loss: roughly `home_supply × (buy_price − cycle_cost)` per affected hour. The filter now triggers on `planned_export_kwh` (not total energy) and demotes slots with meaningful home-supply (`>= 0.10 kWh`) to self-consume — SCF or SCO depending on `sell_price` vs `min_sell_price`, mirroring DP's native split — instead of dropping them. Slots with tiny export and tiny home-supply are still removed as before.
+
+### Notes
+
+- DP itself was correct; the bug was purely in the post-filter heuristic. No DP changes; the original filter rationale ("micro-exports don't recover the mode-switch overhead at sell-price margins") is preserved — just applied to the export portion of the slot rather than the total.
+
 ## [4.7.4] — 2026-05-11
 
 ### Fixed
@@ -132,7 +143,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.4...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.5...HEAD
+[4.7.5]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.4...v4.7.5
 [4.7.4]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.3...v4.7.4
 [4.7.3]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...v4.7.3
 [4.7.2]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...v4.7.2

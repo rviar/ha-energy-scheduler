@@ -288,7 +288,7 @@ export class EsStatsTab extends LitElement {
         <h3>Arbitrage</h3>
         <div class="profit-value">
           ${opt?.estimated_profit !== undefined
-            ? `+${opt.estimated_profit.toFixed(2)} ${this.currency}`
+            ? `${opt.estimated_profit > 0 ? '+' : ''}${opt.estimated_profit.toFixed(2)} ${this.currency}`
             : '--'}
         </div>
         ${opt?.cycle_cost !== undefined ? html`

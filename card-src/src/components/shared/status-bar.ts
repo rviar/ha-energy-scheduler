@@ -58,7 +58,7 @@ export class EsStatusBar extends LitElement {
           <ha-icon class="status-icon" icon="mdi:cash-plus"></ha-icon>
           <span class="status-value">
             ${profit !== undefined && profit !== null
-              ? `+${profit.toFixed(2)} ${this.currency}`
+              ? `${profit > 0 ? '+' : ''}${profit.toFixed(2)} ${this.currency}`
               : '--'}
           </span>
         </div>

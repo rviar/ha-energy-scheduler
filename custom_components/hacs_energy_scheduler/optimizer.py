@@ -88,6 +88,10 @@ class OptimizationResult:
 class EnergyOptimizer:
     """Energy optimization engine."""
 
+    # Noise floor for demoting a micro-export DIS slot to SCF: home-supply
+    # below this is treated as not worth preserving, and the slot is dropped.
+    SCF_DEMOTE_HOME_MIN_KWH = 0.10
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -975,26 +979,88 @@ class EnergyOptimizer:
                 result.charge_hours = filtered_charge
                 _LOGGER.info("Removed %d micro-charge slots (< %.1f kWh)", removed, self.min_discharge_energy)
 
-        # Filter micro-discharges: skip slots below min_discharge_energy threshold
+        # Micro-EXPORT filter (not micro-total): the original filter rationale
+        # was "tiny exports don't recover mode-switching / export overhead at
+        # sell-price margins". The right input to that check is the planned
+        # EXPORT portion of the slot, not its total energy — a slot dominated
+        # by battery-to-home flow is valuable regardless of export size.
+        #
+        # Three branches:
+        #   1. planned_export_kwh >= min_discharge_energy
+        #      → keep as DIS (DP plan stays intact, including any home-supply)
+        #   2. export < threshold AND home_supply >= SCF_DEMOTE_HOME_MIN_KWH
+        #      → demote to self-consume; split SCF vs SCO by the same rule DP
+        #        applies natively (sell_price < min_sell_price → SCO, else SCF)
+        #   3. export < threshold AND home_supply too small
+        #      → drop entirely; slot has nothing meaningful to contribute
+        #
+        # Filtering on export instead of total preserves DP's full optimum
+        # when home-supply is the main component (the case that prompted this
+        # change: morning hours with PV ≈ 0, where DP correctly plans a small
+        # discharge to cover expensive home consumption with a tiny export
+        # tail). Falls back to planned_energy_kwh if planned_export_kwh is
+        # missing — robust across older result shapes.
         if self.min_discharge_energy > 0 and result.discharge_hours:
             filtered_discharge = []
             removed_count = 0
+            demoted_count = 0
             for dh in result.discharge_hours:
-                if dh.get("planned_energy_kwh", 0) < self.min_discharge_energy:
-                    removed_count += 1
+                planned_total = dh.get("planned_energy_kwh", 0.0)
+                planned_export = dh.get("planned_export_kwh", planned_total)
+                if planned_export >= self.min_discharge_energy:
+                    filtered_discharge.append(dh)
+                    continue
+                home_supply = dh.get("planned_home_supply_kwh", 0.0)
+                if home_supply >= self.SCF_DEMOTE_HOME_MIN_KWH:
+                    sell_price = dh.get("value", 0.0)
+                    sc_entry = {
+                        "date": dh.get("date"),
+                        "hour": dh.get("hour"),
+                        "sell_price": sell_price,
+                        "buy_price": dh.get("buy_price", 0.0),
+                        "pv_kwh": dh.get("pv_kwh", 0.0),
+                        "consumption_kwh": dh.get("consumption_kwh", 0.0),
+                        "planned_energy_kwh": round(home_supply, 2),
+                        "expected_start_usable_kwh": dh.get("expected_start_usable_kwh"),
+                        "expected_end_usable_kwh": dh.get("expected_end_usable_kwh"),
+                    }
+                    if sell_price < self.min_sell_price:
+                        result.self_consume_only_hours.append(sc_entry)
+                        sc_tier = "SCO"
+                    else:
+                        result.self_consume_first_hours.append(sc_entry)
+                        sc_tier = "SCF"
+                    demoted_count += 1
                     _LOGGER.debug(
-                        "Filtered micro-discharge: %s %02d:00 - %.2f kWh < %.2f kWh threshold",
-                        dh.get("date"), dh.get("hour", 0),
-                        dh.get("planned_energy_kwh", 0), self.min_discharge_energy,
+                        "Demoted micro-export to %s: %s %02d:00 - "
+                        "export=%.2f kWh < %.2f kWh, home_supply=%.2f kWh "
+                        "preserved",
+                        sc_tier, dh.get("date"), dh.get("hour", 0),
+                        planned_export, self.min_discharge_energy, home_supply,
                     )
                 else:
-                    filtered_discharge.append(dh)
-            if removed_count > 0:
+                    removed_count += 1
+                    _LOGGER.debug(
+                        "Filtered micro-export: %s %02d:00 - export=%.2f kWh, "
+                        "home_supply=%.2f kWh both below thresholds",
+                        dh.get("date"), dh.get("hour", 0),
+                        planned_export, home_supply,
+                    )
+            if removed_count or demoted_count:
                 result.discharge_hours = filtered_discharge
-                _LOGGER.info(
-                    "Removed %d micro-discharge slots (< %.1f kWh)",
-                    removed_count, self.min_discharge_energy,
-                )
+                if removed_count:
+                    _LOGGER.info(
+                        "Removed %d micro-export slots (< %.1f kWh export, "
+                        "< %.2f kWh home-supply)",
+                        removed_count, self.min_discharge_energy,
+                        self.SCF_DEMOTE_HOME_MIN_KWH,
+                    )
+                if demoted_count:
+                    _LOGGER.info(
+                        "Demoted %d micro-export slots to self-consume "
+                        "(home-supply >= %.2f kWh preserved)",
+                        demoted_count, self.SCF_DEMOTE_HOME_MIN_KWH,
+                    )
 
         self._calculate_profit_metrics(result)
         _LOGGER.debug(
