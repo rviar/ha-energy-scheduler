@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.7.4] — 2026-05-11
+
+### Fixed
+
+- **Inverter stuck in Grid Only after mid-hour re-optimization.** When optimization ran inside an hour that already had a discharge slot, hit its `soc_limit`, and reverted to idle (Grid Only), the freshly-written plan for the same hour was silently ignored even though storage had the new slot. Root cause: the in-memory `_soc_target_completed` / `_locked_soc_types` dicts were keyed by `f"{date}_{hour}"`. The lock survived the schedule rewrite — so the next 60s scheduler tick saw `should_apply = False` regardless of what the new slot said, and the inverter stayed in Grid Only until the hour ended. Fix: lock key now includes a plan signature `(action, soc_limit, soc_limit_type, full_hour, minutes, ev_charging)`. Any change to the slot produces a fresh key, the prior completion state stops applying, and the new plan is evaluated from scratch. Stable plans see the same key on every tick — ping-pong protection is preserved.
+
+### Notes
+
+- The lock is in-memory, so the fix takes effect immediately on integration reload — no storage migration.
+- If you observe the symptom on a running install before updating: reloading the integration (Settings → Devices → HACS Energy Scheduler → Reload) clears the in-memory state and the next scheduler tick applies the current plan.
+
 ## [4.7.3] — 2026-05-10
 
 ### Fixed
@@ -121,7 +132,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.3...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.4...HEAD
+[4.7.4]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.3...v4.7.4
 [4.7.3]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...v4.7.3
 [4.7.2]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.1...v4.7.2
 [4.7.1]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.0...v4.7.1

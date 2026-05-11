@@ -41,17 +41,27 @@ class ScheduleExecutorMixin:
         current_date = local_now.strftime("%Y-%m-%d")
         current_hour = str(local_now.hour)
         current_minute = local_now.minute
-        date_key = current_date  # Used for locked_soc_types key
 
-        # Clean up stale SOC locks (from previous hours/days)
-        current_key = f"{current_date}_{current_hour}"
+        # SOC locks are keyed by (date, hour, plan_signature). Encoding the
+        # plan into the key makes locks self-invalidate when the schedule
+        # for the same hour is rewritten (e.g. mid-hour re-optimization with
+        # a new soc_limit): the old key no longer matches the freshly built
+        # one, so the prior "target completed" / "direction auto-detected"
+        # state is silently abandoned and the new plan is evaluated from
+        # scratch. Cleanup here only drops entries for non-current hours;
+        # stale entries for the current hour age out via the same mechanism
+        # the next time their plan_sig fails to match.
+        def _key_belongs_to_current_hour(k) -> bool:
+            return (
+                isinstance(k, tuple) and len(k) >= 2
+                and k[0] == current_date and k[1] == current_hour
+            )
+
         if hasattr(self, "_locked_soc_types"):
-            stale_keys = [k for k in self._locked_soc_types if k != current_key]
-            for k in stale_keys:
+            for k in [k for k in self._locked_soc_types if not _key_belongs_to_current_hour(k)]:
                 del self._locked_soc_types[k]
         if hasattr(self, "_soc_target_completed"):
-            stale_keys = [k for k in self._soc_target_completed if k != current_key]
-            for k in stale_keys:
+            for k in [k for k in self._soc_target_completed if not _key_belongs_to_current_hour(k)]:
                 del self._soc_target_completed[k]
 
         # Sync current action with actual inverter state (handles external changes)
@@ -95,7 +105,19 @@ class ScheduleExecutorMixin:
             if soc_limit is not None and self.soc_sensor and not ev_charging:
                 current_soc = self._get_current_soc()
                 soc_limit_type = hour_schedule.get("soc_limit_type")
-                schedule_key = f"{date_key}_{current_hour}"
+                # Content-keyed lock: every field that affects the SOC-check
+                # decision is part of the key. A rewrite that changes any of
+                # them produces a fresh key and the prior completion/direction
+                # state stops applying.
+                plan_sig = (
+                    action,
+                    soc_limit,
+                    soc_limit_type,
+                    full_hour,
+                    minutes,
+                    ev_charging,
+                )
+                schedule_key = (current_date, current_hour, plan_sig)
 
                 # Initialize lock storage if needed
                 if not hasattr(self, "_soc_target_completed"):
