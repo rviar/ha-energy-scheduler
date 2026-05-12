@@ -1,12 +1,32 @@
 import { LitElement, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { modalStyles } from '@/styles';
+import { cardStyles, modalStyles } from '@/styles';
 import type { HomeAssistant, IntegrationConfig, ScheduleData, ScheduleEntry, HourData } from '@/types';
-import { formatDateTime, formatPrice, saveSchedule, clearSchedule, setManualFlag } from '@/utils';
+import {
+  formatDateTime,
+  formatPrice,
+  saveSchedule,
+  clearSchedule,
+  setManualFlag,
+  isPlaceholderAction,
+  PLACEHOLDER_LABELS,
+  resolveActionType,
+  getActionLabel,
+  type PlaceholderAction,
+} from '@/utils';
+
+interface FormSnapshot {
+  action: string;
+  socLimit: number;
+  socLimitType: string;
+  fullHour: boolean;
+  minutes: number;
+  evCharging: boolean;
+}
 
 @customElement('es-hour-modal')
 export class EsHourModal extends LitElement {
-  static styles = modalStyles;
+  static styles = [cardStyles, modalStyles];
 
   @property({ attribute: false }) hass?: HomeAssistant;
   @property({ attribute: false }) data?: ScheduleData;
@@ -17,48 +37,87 @@ export class EsHourModal extends LitElement {
   @state() private _open = false;
   @state() private _date?: string;
   @state() private _hour?: number;
+  // For non-placeholder slots: the chosen real inverter mode (pre-filled).
+  // For placeholder slots: the user's *override* — empty until they pick one.
   @state() private _action = '';
+  @state() private _placeholder?: PlaceholderAction;
+  // True when the loaded entry was set by the optimizer (entry.manual !== true).
+  // Drives the banner and the no-op-on-Save-if-unchanged behavior.
+  @state() private _isOptimizerSet = false;
+  // Banner label for non-placeholder optimizer slots ("Discharge", "Charge",
+  // etc.) — resolved via resolveActionType when the entry has a real mode.
+  @state() private _optimizerActionLabel = '';
   @state() private _socLimit = 100;
   @state() private _socLimitType = 'auto';
   @state() private _fullHour = true;
   @state() private _minutes = 30;
   @state() private _evCharging = false;
 
+  // Snapshot of the form taken right after _loadFormValues. If the user clicks
+  // Save without changing anything AND the slot is optimizer-set, we skip the
+  // API call — saving would silently flip manual=true and lock the slot for
+  // no reason.
+  private _initialSnapshot?: FormSnapshot;
+
+  private _escHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') this.close();
+  };
+
   open(date: string, hour: number) {
     this._date = date;
     this._hour = hour;
     this._open = true;
     this._loadFormValues();
+    document.addEventListener('keydown', this._escHandler);
   }
 
   close() {
     this._open = false;
     this._date = undefined;
     this._hour = undefined;
+    document.removeEventListener('keydown', this._escHandler);
   }
 
-  private _resolveAction(action: string): string {
-    const defaultMode = this.data?.default_mode ?? '';
-    const selfConsumeMode = this.integrationConfig?.mode_self_consume ?? '';
-    const gridOnlyMode = this.integrationConfig?.mode_grid_only ?? '';
-    if (action === 'PV_CHARGE' || action === 'SELF_CONSUME_FIRST') return defaultMode;
-    if (action === 'SELF_CONSUME_ONLY') return selfConsumeMode || defaultMode;
-    if (action === 'PAID_IMPORT') return gridOnlyMode || defaultMode;
-    if (action === 'CHARGE') return this.integrationConfig?.mode_charge_battery ?? defaultMode;
-    return action;
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    // Belt-and-suspenders: if the element is torn down while the modal is
+    // still open, the document-level listener would outlive the instance.
+    document.removeEventListener('keydown', this._escHandler);
   }
 
   private _loadFormValues() {
     if (!this._date || this._hour === undefined) return;
     const entry = this.data?.schedule?.[this._date]?.[this._hour.toString()];
     if (entry) {
-      this._action = this._resolveAction(entry.action ?? '');
-      this._socLimit = entry.soc_limit ?? 100;
-      this._socLimitType = entry.soc_limit_type ?? 'auto';
-      this._fullHour = entry.full_hour ?? true;
-      this._minutes = entry.minutes ?? 30;
-      this._evCharging = entry.ev_charging ?? false;
+      const rawAction = entry.action ?? '';
+      this._isOptimizerSet = entry.manual !== true;
+      if (isPlaceholderAction(rawAction)) {
+        // Placeholder — backend resolves at runtime; we don't pre-fill the
+        // dropdown. Empty Override means "keep the optimizer's decision".
+        this._placeholder = rawAction;
+        this._optimizerActionLabel = PLACEHOLDER_LABELS[rawAction];
+        this._action = '';
+        this._socLimit = 100;
+        this._socLimitType = 'auto';
+        this._fullHour = true;
+        this._minutes = 30;
+        this._evCharging = false;
+      } else {
+        this._placeholder = undefined;
+        this._optimizerActionLabel = this.integrationConfig
+          ? getActionLabel(resolveActionType(entry, this.integrationConfig))
+          : rawAction;
+        this._action = rawAction;
+        this._socLimit = entry.soc_limit ?? 100;
+        this._socLimitType = entry.soc_limit_type ?? 'auto';
+        this._fullHour = entry.full_hour ?? true;
+        this._minutes = entry.minutes ?? 30;
+        this._evCharging = entry.ev_charging ?? false;
+      }
     } else {
+      this._isOptimizerSet = false;
+      this._placeholder = undefined;
+      this._optimizerActionLabel = '';
       this._action = '';
       this._socLimit = 100;
       this._socLimitType = 'auto';
@@ -66,6 +125,31 @@ export class EsHourModal extends LitElement {
       this._minutes = 30;
       this._evCharging = false;
     }
+    this._initialSnapshot = this._currentSnapshot();
+  }
+
+  private _currentSnapshot(): FormSnapshot {
+    return {
+      action: this._action,
+      socLimit: this._socLimit,
+      socLimitType: this._socLimitType,
+      fullHour: this._fullHour,
+      minutes: this._minutes,
+      evCharging: this._evCharging,
+    };
+  }
+
+  private _isUnchanged(): boolean {
+    const s = this._initialSnapshot;
+    if (!s) return false;
+    return (
+      s.action === this._action &&
+      s.socLimit === this._socLimit &&
+      s.socLimitType === this._socLimitType &&
+      s.fullHour === this._fullHour &&
+      s.minutes === this._minutes &&
+      s.evCharging === this._evCharging
+    );
   }
 
   private _getHourData(): HourData | undefined {
@@ -107,7 +191,20 @@ export class EsHourModal extends LitElement {
   }
 
   private async _handleSave() {
-    if (!this.hass || !this._date || this._hour === undefined || !this._action) return;
+    if (!this.hass || !this._date || this._hour === undefined) return;
+    // Placeholder slot with no override picked → keep the optimizer's choice,
+    // do not stomp it with a real mode.
+    if (!this._action) {
+      this.close();
+      return;
+    }
+    // Optimizer-set slot with no edits → close without API. Saving would only
+    // flip manual=true and lock the slot at values the optimizer just picked,
+    // which is almost never what the user wanted (they came to look or tweak).
+    if (this._isOptimizerSet && this._isUnchanged()) {
+      this.close();
+      return;
+    }
     const defaultMode = this.data?.default_mode ?? '';
     const options: Record<string, unknown> = {};
 
@@ -194,11 +291,25 @@ export class EsHourModal extends LitElement {
             ` : nothing}
           </div>
 
+          ${this._isOptimizerSet ? html`
+            <div class="placeholder-banner">
+              <div class="placeholder-banner-title">
+                <ha-icon icon="mdi:auto-fix"></ha-icon>
+                Optimizer chose: ${this._optimizerActionLabel}
+              </div>
+              <div class="placeholder-banner-hint">
+                ${this._placeholder
+                  ? html`Resolved to a real inverter mode at runtime. Leave Override empty to keep the optimizer's choice.`
+                  : html`Tweak values and Save to lock — or close to leave it free for the next optimization run.`}
+              </div>
+            </div>
+          ` : nothing}
+
           <div class="form-group">
-            <label>Inverter Mode</label>
+            <label>${this._placeholder ? 'Override to…' : 'Inverter Mode'}</label>
             <select .value=${this._action}
               @change=${(e: Event) => { this._action = (e.target as HTMLSelectElement).value; }}>
-              <option value="">-- Select --</option>
+              <option value="">${this._placeholder ? '-- Keep optimizer choice --' : '-- Select --'}</option>
               ${modes.map((m) => html`
                 <option value=${m} ?selected=${m === this._action}>
                   ${m}${m === defaultMode ? ' *' : ''}
@@ -270,7 +381,8 @@ export class EsHourModal extends LitElement {
             ${isManual ? html`<button class="btn btn-warning" @click=${this._handleUnlock}>
               <ha-icon icon="mdi:lock-open-outline"></ha-icon> Unlock
             </button>` : nothing}
-            <button class="btn btn-primary" @click=${this._handleSave} ?disabled=${!this._action}>
+            <button class="btn btn-primary" @click=${this._handleSave}
+              ?disabled=${!this._placeholder && !this._action}>
               <ha-icon icon="mdi:check"></ha-icon> Save
             </button>
           </div>

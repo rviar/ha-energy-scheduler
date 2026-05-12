@@ -18,6 +18,8 @@ import {
   getWeekdayName,
   getWeekdayShort,
   getTodayWeekday,
+  isBuyHour,
+  isSellHour,
 } from '@/utils';
 
 @customElement('es-stats-tab')
@@ -56,8 +58,15 @@ export class EsStatsTab extends LitElement {
     if (!this.hass || this._profileLoading) return;
     this._profileLoading = true;
     try {
-      this._consumptionProfile = await fetchConsumptionProfile(this.hass);
+      const profile = await fetchConsumptionProfile(this.hass);
+      // Bail if the user switched away from the stats tab during fetch —
+      // otherwise we'd set state and call _setupConsumptionChart() on a
+      // disposed element, leaking the Chart.js instance (disconnectedCallback
+      // has already fired and won't fire again to clean it up).
+      if (!this.isConnected) return;
+      this._consumptionProfile = profile;
       await this.updateComplete;
+      if (!this.isConnected) return;
       this._setupConsumptionChart();
     } catch {
       // Profile not available
@@ -156,48 +165,42 @@ export class EsStatsTab extends LitElement {
     return hour >= currentHour;
   }
 
+  // Buy / Sell hour predicates — see docs/adr/0002-arbitrage-buy-sell-semantics.md.
+  // Both kinds (EV / battery charge, solar-only / battery sell) belong here.
+
   private _getChargeHours(): Array<{ hour: string; price: number }> {
-    const schedule = this.data?.schedule ?? {};
-    const items: Array<{ date: string; hour: number; price: number }> = [];
-    const buyPrices = this.data?.buy_prices ?? [];
-
-    for (const [date, hours] of Object.entries(schedule)) {
-      for (const [hour, entry] of Object.entries(hours)) {
-        const hourNum = parseInt(hour);
-        if (!this._isFutureHour(date, hourNum)) continue;
-        const e = entry as ScheduleEntry;
-        if (e.action === 'CHARGE' || e.action === this.integrationConfig?.mode_charge_battery) {
-          const price = buyPrices.find((p) => p.date === date && p.hour === hourNum)?.value ?? 0;
-          items.push({ date, hour: hourNum, price });
-        }
-      }
-    }
-
-    items.sort((a, b) => a.price - b.price);
-    return items.map((i) => ({
-      hour: `${i.date.substring(5)} ${formatHour(i.hour)}`,
-      price: i.price,
-    }));
+    return this._collectHours(this.data?.buy_prices ?? [], isBuyHour, (a, b) => a - b);
   }
 
   private _getDischargeHours(): Array<{ hour: string; price: number }> {
-    const schedule = this.data?.schedule ?? {};
-    const items: Array<{ date: string; hour: number; price: number }> = [];
-    const sellPrices = this.data?.sell_prices ?? [];
-    const sellMode = this.integrationConfig?.mode_sell;
+    return this._collectHours(this.data?.sell_prices ?? [], isSellHour, (a, b) => b - a);
+  }
 
+  // Skip hours with unknown price (no entry in the feed) or exactly 0 — those
+  // carry no arbitrage signal. Negative prices are kept (paid-to-consume on
+  // buy, paid-to-export on sell are both informative).
+  private _collectHours(
+    prices: Array<{ date: string; hour: number; value: number }>,
+    predicate: (entry: ScheduleEntry, config: IntegrationConfig) => boolean,
+    sortPrices: (a: number, b: number) => number
+  ): Array<{ hour: string; price: number }> {
+    const schedule = this.data?.schedule ?? {};
+    const config = this.integrationConfig;
+    if (!config) return [];
+
+    const items: Array<{ date: string; hour: number; price: number }> = [];
     for (const [date, hours] of Object.entries(schedule)) {
       for (const [hour, entry] of Object.entries(hours)) {
         const hourNum = parseInt(hour);
         if (!this._isFutureHour(date, hourNum)) continue;
-        if ((entry as ScheduleEntry).action === sellMode) {
-          const price = sellPrices.find((p) => p.date === date && p.hour === hourNum)?.value ?? 0;
-          items.push({ date, hour: hourNum, price });
-        }
+        if (!predicate(entry as ScheduleEntry, config)) continue;
+        const found = prices.find((p) => p.date === date && p.hour === hourNum);
+        if (!found || found.value === 0) continue;
+        items.push({ date, hour: hourNum, price: found.value });
       }
     }
 
-    items.sort((a, b) => b.price - a.price);
+    items.sort((a, b) => sortPrices(a.price, b.price));
     return items.map((i) => ({
       hour: `${i.date.substring(5)} ${formatHour(i.hour)}`,
       price: i.price,

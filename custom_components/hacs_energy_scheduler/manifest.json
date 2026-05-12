@@ -1,7 +1,7 @@
 {
   "domain": "hacs_energy_scheduler",
   "name": "HACS Energy Scheduler",
-  "version": "4.7.5",
+  "version": "4.8.0",
   "codeowners": ["@rviar"],
   "config_flow": true,
   "dependencies": ["frontend"],

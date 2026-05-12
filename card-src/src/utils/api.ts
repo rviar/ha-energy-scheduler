@@ -55,13 +55,6 @@ export async function clearSchedule(
   await hass.callApi('DELETE', url);
 }
 
-export async function applyMode(
-  hass: HomeAssistant,
-  mode: string
-): Promise<void> {
-  await hass.callApi('POST', `${API_BASE}/apply_mode`, { mode });
-}
-
 export async function setManualFlag(
   hass: HomeAssistant,
   date: string,

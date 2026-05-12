@@ -1,12 +1,7 @@
 import type { ScheduleEntry, IntegrationConfig, ActionType, HourData, PricePoint } from '@/types';
+import { PLACEHOLDER_ACTIONS } from './action-constants';
 
-const ACTION_CHARGE_PLACEHOLDER = 'CHARGE';
-const ACTION_PV_CHARGE_PLACEHOLDER = 'PV_CHARGE';
-const ACTION_SELF_CONSUME_FIRST_PLACEHOLDER = 'SELF_CONSUME_FIRST';
-const ACTION_SELF_CONSUME_ONLY_PLACEHOLDER = 'SELF_CONSUME_ONLY';
-const ACTION_PAID_IMPORT_PLACEHOLDER = 'PAID_IMPORT';
-
-// --- Action type resolution ---
+// --- Action type resolution (presentation category) ---
 
 export function resolveActionType(
   entry: ScheduleEntry,
@@ -14,7 +9,7 @@ export function resolveActionType(
 ): ActionType {
   const action = entry.action;
 
-  if (action === ACTION_CHARGE_PLACEHOLDER || action === config.mode_charge_battery) {
+  if (action === PLACEHOLDER_ACTIONS.CHARGE || action === config.mode_charge_battery) {
     if (entry.ev_charging) return 'charge_ev';
     return 'charge';
   }
@@ -22,10 +17,10 @@ export function resolveActionType(
   if (action === config.mode_charge_ev_and_battery) return 'charge_ev';
   if (action === config.mode_sell) return 'discharge';
   if (action === config.mode_sell_solar_only) return 'solar';
-  if (action === ACTION_PV_CHARGE_PLACEHOLDER) return 'pv_charge';
-  if (action === ACTION_SELF_CONSUME_FIRST_PLACEHOLDER) return 'self_consume';
-  if (action === ACTION_SELF_CONSUME_ONLY_PLACEHOLDER) return 'self_consume';
-  if (action === ACTION_PAID_IMPORT_PLACEHOLDER) return 'paid_import';
+  if (action === PLACEHOLDER_ACTIONS.PV_CHARGE) return 'pv_charge';
+  if (action === PLACEHOLDER_ACTIONS.SELF_CONSUME_FIRST) return 'self_consume';
+  if (action === PLACEHOLDER_ACTIONS.SELF_CONSUME_ONLY) return 'self_consume';
+  if (action === PLACEHOLDER_ACTIONS.PAID_IMPORT) return 'paid_import';
   if (action === config.mode_self_consume) return 'self_consume';
   if (action === config.mode_grid_only) return 'idle';
   if (action === config.default_mode || !action) return 'idle';
@@ -33,74 +28,67 @@ export function resolveActionType(
   return 'other';
 }
 
-// --- Colors ---
+// --- Arbitrage predicates (economic-flow, see ADR-0002) ---
+//
+// Distinct from `resolveActionType`: that function answers "what category
+// should I render this slot as?", these answer "does this slot exchange
+// energy with the grid in a way that belongs in the Buy/Sell list?".
+// `charge_ev` is a 'buy' (paid import) but a separate display category from
+// `charge`, hence the dedicated predicates instead of folding into
+// resolveActionType.
 
-const ACTION_COLORS: Record<ActionType, string> = {
-  charge: '#4CAF50',
-  charge_ev: '#2196F3',
-  discharge: '#FF5722',
-  solar: '#FF9800',
-  pv_charge: '#8BC34A',
-  self_consume: '#FFC107',
-  paid_import: '#00BCD4',
-  idle: '#9E9E9E',
-  other: '#607D8B',
-};
+export function isBuyHour(entry: ScheduleEntry, config: IntegrationConfig): boolean {
+  const a = entry.action;
+  return (
+    a === PLACEHOLDER_ACTIONS.CHARGE ||
+    a === PLACEHOLDER_ACTIONS.PAID_IMPORT ||
+    a === config.mode_charge_battery ||
+    a === config.mode_charge_ev ||
+    a === config.mode_charge_ev_and_battery
+  );
+}
 
-const ACTION_COLORS_ALPHA: Record<ActionType, string> = {
-  charge: 'rgba(76, 175, 80, 0.15)',
-  charge_ev: 'rgba(33, 150, 243, 0.15)',
-  discharge: 'rgba(255, 87, 34, 0.15)',
-  solar: 'rgba(255, 152, 0, 0.15)',
-  pv_charge: 'rgba(139, 195, 74, 0.15)',
-  self_consume: 'rgba(255, 193, 7, 0.15)',
-  paid_import: 'rgba(0, 188, 212, 0.15)',
-  idle: 'rgba(158, 158, 158, 0.08)',
-  other: 'rgba(96, 125, 139, 0.1)',
+export function isSellHour(entry: ScheduleEntry, config: IntegrationConfig): boolean {
+  const a = entry.action;
+  return a === config.mode_sell || a === config.mode_sell_solar_only;
+}
+
+// --- Presentation (color / bg / icon / label per ActionType) ---
+
+interface ActionPresentation {
+  color: string;
+  bgColor: string;
+  icon: string;
+  label: string;
+}
+
+const ACTION_PRESENTATION: Record<ActionType, ActionPresentation> = {
+  charge:       { color: '#4CAF50', bgColor: 'rgba(76, 175, 80, 0.15)',  icon: 'mdi:battery-charging',    label: 'Charge' },
+  charge_ev:    { color: '#2196F3', bgColor: 'rgba(33, 150, 243, 0.15)', icon: 'mdi:car-electric',        label: 'Charge + EV' },
+  discharge:    { color: '#FF5722', bgColor: 'rgba(255, 87, 34, 0.15)',  icon: 'mdi:battery-arrow-down',  label: 'Discharge' },
+  solar:        { color: '#FF9800', bgColor: 'rgba(255, 152, 0, 0.15)',  icon: 'mdi:solar-power',         label: 'Solar Only' },
+  pv_charge:    { color: '#8BC34A', bgColor: 'rgba(139, 195, 74, 0.15)', icon: 'mdi:solar-panel',         label: 'PV Charge' },
+  self_consume: { color: '#FFC107', bgColor: 'rgba(255, 193, 7, 0.15)',  icon: 'mdi:home-battery',        label: 'Self-Consume' },
+  paid_import:  { color: '#00BCD4', bgColor: 'rgba(0, 188, 212, 0.15)',  icon: 'mdi:cash-plus',           label: 'Paid Import' },
+  // Intentionally lower alpha — idle slots should fade into the grid.
+  idle:         { color: '#9E9E9E', bgColor: 'rgba(158, 158, 158, 0.08)', icon: '',                       label: 'Idle' },
+  other:        { color: '#607D8B', bgColor: 'rgba(96, 125, 139, 0.1)',  icon: 'mdi:help-circle-outline', label: 'Other' },
 };
 
 export function getActionColor(type: ActionType): string {
-  return ACTION_COLORS[type];
+  return ACTION_PRESENTATION[type].color;
 }
 
 export function getActionBgColor(type: ActionType): string {
-  return ACTION_COLORS_ALPHA[type];
+  return ACTION_PRESENTATION[type].bgColor;
 }
-
-// --- Icons ---
-
-const ACTION_ICONS: Record<ActionType, string> = {
-  charge: 'mdi:battery-charging',
-  charge_ev: 'mdi:car-electric',
-  discharge: 'mdi:battery-arrow-down',
-  solar: 'mdi:solar-power',
-  pv_charge: 'mdi:solar-panel',
-  self_consume: 'mdi:home-battery',
-  paid_import: 'mdi:cash-plus',
-  idle: '',
-  other: 'mdi:help-circle-outline',
-};
 
 export function getActionIcon(type: ActionType): string {
-  return ACTION_ICONS[type];
+  return ACTION_PRESENTATION[type].icon;
 }
 
-// --- Labels ---
-
-const ACTION_LABELS: Record<ActionType, string> = {
-  charge: 'Charge',
-  charge_ev: 'Charge + EV',
-  discharge: 'Discharge',
-  solar: 'Solar Only',
-  pv_charge: 'PV Charge',
-  self_consume: 'Self-Consume',
-  paid_import: 'Paid Import',
-  idle: 'Idle',
-  other: 'Other',
-};
-
 export function getActionLabel(type: ActionType): string {
-  return ACTION_LABELS[type];
+  return ACTION_PRESENTATION[type].label;
 }
 
 // --- Date/Time formatters ---

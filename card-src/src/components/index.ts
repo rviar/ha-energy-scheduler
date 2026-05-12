@@ -4,6 +4,5 @@ export { EsTabBar } from './shared/tab-bar';
 export { EsStatusBar } from './shared/status-bar';
 export { EsHourModal } from './shared/hour-modal';
 export { EsScheduleTab } from './tabs/schedule-tab';
-export { EsControlTab } from './tabs/control-tab';
 export { EsEvTab } from './tabs/ev-tab';
 export { EsStatsTab } from './tabs/stats-tab';

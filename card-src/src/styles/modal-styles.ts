@@ -69,6 +69,32 @@ export const modalStyles = css`
     margin-bottom: 16px;
     font-size: 13px;
   }
+
+  .placeholder-banner {
+    background: rgba(139, 195, 74, 0.10);
+    border: 1px solid rgba(139, 195, 74, 0.35);
+    padding: 12px 14px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+  .placeholder-banner-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-text-color);
+  }
+  .placeholder-banner-title ha-icon {
+    --mdc-icon-size: 16px;
+    color: #8BC34A;
+  }
+  .placeholder-banner-hint {
+    font-size: 12px;
+    color: var(--secondary-text-color);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
   .price-info .row {
     display: flex;
     justify-content: space-between;
@@ -217,6 +243,19 @@ export const modalStyles = css`
     border-top: 1px solid var(--divider-color, rgba(0, 0, 0, 0.08));
   }
   .modal-actions .btn { flex: 1; padding: 12px 16px; }
+
+  .confirm-modal { max-width: 360px; }
+  .confirm-message {
+    font-size: 14px;
+    color: var(--primary-text-color);
+    line-height: 1.5;
+    padding: 4px 0;
+  }
+  .confirm-modal .modal-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+
 
   @keyframes es-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes es-slide-up {

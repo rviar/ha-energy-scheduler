@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [4.8.0] — 2026-05-12
+
+### Changed
+
+- **Schedule-tab toolbar redesigned.** The two segmented `Active/Paused` and `Auto/Manual` controls are gone. In their place:
+  - **Optimize** is now a split button — main part runs the optimizer (as before); the chevron opens a small popover with `Auto / Manual` (radio). The optimization mode lives next to the action it modifies.
+  - **Auto-apply** is now a single toggle switch on the right side of the same row. ON = scheduler executor applies the plan to the inverter; OFF = paused.
+  - The separate settings bar below the toolbar was removed — one row instead of two.
+- **Arbitrage panel hides hours with no economic signal.** Slots whose feed price is missing (not yet published) or exactly `0` are no longer listed in `Sell hours` / `Buy hours` — they carry no arbitrage information. Negative prices are kept on purpose: paid-to-consume buy hours and paid-to-export sell hours are both informative.
+
+### Removed
+
+- **Force Mode.** Was never a working feature on the inverter. Manual force-set didn't write to the schedule, so the scheduler executor (60-second cadence) overrode it within a minute. The dropdown is gone; use the per-hour modal to lock a real slot instead.
+
+### Fixed
+
+- **Stale `optimize_interval` validation in the API.** The `/api/hacs_energy_scheduler/optimize_interval` endpoint rejected the current `auto` / `manual` values with `Invalid interval. Must be one of: ['manual', 'hourly', '6h', 'daily', 'reactive']` — the hardcoded list was leftover from the old multi-interval model. Now validates against `OPTIMIZE_INTERVAL_AUTO` / `OPTIMIZE_INTERVAL_MANUAL` from `const.py` (single source of truth).
+- **Schedule chart points flickering on hover.** `getAvailableHours()` returned a fresh array on every render and HA fires `hass` on every entity tick — Lit's identity check then triggered `chart.update()` on every tick, resetting hover state and making points pop in/out. Hours are now memoized by `(data ref, tz)` tuple, so hass-only re-renders don't propagate to the chart.
+- **Hour modal buttons unstyled.** `<es-hour-modal>` imported `modalStyles` but not `cardStyles`, so the `.btn-primary` / `.btn-danger` color tokens were missing. Now loads both stylesheets.
+- **Orphan Chart.js leak in Stats consumption chart.** If the user switched tabs while the consumption-profile fetch was in flight, the resolution path tried to render into a detached canvas. Added an `isConnected` guard.
+- **Hour modal closes on `Esc`** — previously had to click outside or the close button.
+
+### Internal
+
+- Centralized placeholder `ACTION_*` constants in `card-src/src/utils/action-constants.ts` (wire-protocol mirror of `const.py:144-149`, sync rule documented in `CLAUDE.md`).
+- Extracted Chart.js logic from `schedule-tab.ts` into a dedicated `<es-schedule-chart>` component.
+- Added a promise-based `<es-confirm-modal>` helper for inline `await modal.confirm(...)` flows.
+- Removed orphan `control-tab.ts` and `control-styles.ts` (dead code).
+- ADR-0002 documents extended Buy/Sell hour semantics (`docs/adr/0002-arbitrage-buy-sell-semantics.md`).
+
 ## [4.7.5] — 2026-05-11
 
 ### Fixed
@@ -143,7 +173,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Layer 2 doesn't smooth across days — tomorrow starts fresh.
 - `today_production` sensor must report in kWh, Wh, or MWh (auto-detected via `unit_of_measurement`). Other units disable Layer 2 with reason `unit_unsupported`.
 
-[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.5...HEAD
+[Unreleased]: https://github.com/rviar/ha-energy-scheduler/compare/v4.8.0...HEAD
+[4.8.0]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.5...v4.8.0
 [4.7.5]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.4...v4.7.5
 [4.7.4]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.3...v4.7.4
 [4.7.3]: https://github.com/rviar/ha-energy-scheduler/compare/v4.7.2...v4.7.3

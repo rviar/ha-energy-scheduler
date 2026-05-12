@@ -641,12 +641,17 @@ async def _async_register_api(
         requires_auth = True
 
         async def post(self, request: web.Request) -> web.Response:
-            """Handle POST request to change interval."""
+            """Handle POST request to change interval.
+
+            Storage/coordinator only accept "auto" and "manual"; legacy values
+            (hourly/6h/daily/reactive) from earlier versions are silently
+            normalized to "auto" downstream, so the API surface mirrors that.
+            """
             try:
                 coord = _get_coordinator(hass)
                 data = await request.json()
                 interval = data.get("interval")
-                valid_intervals = ["manual", "hourly", "6h", "daily", "reactive"]
+                valid_intervals = [OPTIMIZE_INTERVAL_AUTO, OPTIMIZE_INTERVAL_MANUAL]
                 if interval not in valid_intervals:
                     return self.json(
                         {"error": f"Invalid interval. Must be one of: {valid_intervals}"},

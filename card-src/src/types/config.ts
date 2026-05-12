@@ -9,7 +9,7 @@ export interface EnergySchedulerCardConfig {
   show_status_bar?: boolean;
   show_ev_tab?: 'auto' | 'always' | 'never';
   chart_height?: number;
-  default_tab?: 'schedule' | 'control' | 'ev' | 'stats';
+  default_tab?: 'schedule' | 'ev' | 'stats';
   price_decimals?: number;
   currency?: string;
 }

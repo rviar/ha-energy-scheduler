@@ -6,6 +6,10 @@
 - The compiled JS in `custom_components/hacs_energy_scheduler/www/energy-scheduler-card.js` is a build artifact — do NOT edit it directly
 - To build: `cd card-src && npm run build`
 
+### Wire protocol constants
+
+`card-src/src/utils/action-constants.ts` mirrors `ACTION_*` placeholder strings from `custom_components/hacs_energy_scheduler/const.py:144-149`. When adding/renaming/removing an `ACTION_*` placeholder on the backend, sync the TS file in the same commit — there is no codegen. The card also keeps `helpers.ts:resolveActionType`, `isBuyHour`, `isSellHour` consistent with the placeholder set. See `docs/adr/0002-arbitrage-buy-sell-semantics.md` for the buy/sell predicate semantics.
+
 ## Release Process
 
 When the user asks to "сделать релиз" / "release" / "bump version":
